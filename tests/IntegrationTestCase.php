@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Tests;
 
 use AndyDefer\Actions\ActionServiceProvider;
 use AndyDefer\AuthenticationKit\AuthenticationKitServiceProvider;
+use AndyDefer\Logger\LoggerServiceProvider;
 use AndyDefer\Nemesis\NemesisServiceProvider;
 use Carbon\Carbon;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -31,6 +32,7 @@ abstract class IntegrationTestCase extends Orchestra
     protected function getPackageProviders($app): array
     {
         return [
+            LoggerServiceProvider::class,
             NemesisServiceProvider::class,
             ActionServiceProvider::class,
             AuthenticationKitServiceProvider::class,
@@ -51,6 +53,9 @@ abstract class IntegrationTestCase extends Orchestra
         $app['config']->set('nemesis.hash_algorithm', 'sha256');
         $app['config']->set('nemesis.middleware.parameter_name', 'nemesis_auth');
         $app['config']->set('nemesis.expiration', 60);
+
+        $app['config']->set('authentication-kit.token_name', 'authentication-kit');
+
     }
 
     protected function runMigrations(): void

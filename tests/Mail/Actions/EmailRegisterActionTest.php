@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
+use AndyDefer\AuthenticationKit\Enums\EventType;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailRegisterRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
+use AndyDefer\Logger\Contracts\LoggerInterface;
+use AndyDefer\Logger\Records\LogDataRecord;
+use Mockery;
 
 final class EmailRegisterActionTest extends IntegrationTestCase
 {
@@ -81,6 +85,70 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'name' => 'Jane Doe',
             'email' => 'jane@example.com',
         ]);
+    }
+
+    public function test_register_logs_successful_registration(): void
+    {
+        $logger = Mockery::mock(LoggerInterface::class);
+        $this->app->instance(LoggerInterface::class, $logger);
+
+        $logger->shouldReceive('info')
+            ->once()
+            ->with(Mockery::on(function (LogDataRecord $log) {
+                return $log->type === 'auth'
+                    && $log->payload->event === EventType::USER_REGISTRATION_SUCCESS->value
+                    && isset($log->payload->user_id)
+                    && isset($log->payload->platform)
+                    && isset($log->payload->browser)
+                    && isset($log->payload->device_type)
+                    && isset($log->payload->ip)
+                    && isset($log->payload->user_agent)
+                    && $log->payload->model_type === TestUserMail::class;
+            }));
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'name' => 'Log Test',
+            'email' => 'log@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        $response = $this->postJson('/api/register', $payload);
+
+        $response->assertStatus(201);
+    }
+
+    public function test_register_logs_failed_registration(): void
+    {
+        $logger = Mockery::mock(LoggerInterface::class);
+        $this->app->instance(LoggerInterface::class, $logger);
+
+        $logger->shouldReceive('info')
+            ->once()
+            ->with(Mockery::on(function (LogDataRecord $log) {
+                return $log->type === 'auth'
+                    && $log->payload->event === 'user_registration_failed'
+                    && $log->payload->model_type === TestUserMail::class
+                    && str_contains($log->payload->error, 'email')
+                    && isset($log->payload->platform)
+                    && isset($log->payload->browser)
+                    && isset($log->payload->device_type)
+                    && isset($log->payload->ip)
+                    && isset($log->payload->user_agent);
+            }));
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'name' => 'John Doe',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        $response = $this->postJson('/api/register', $payload);
+
+        $response->assertStatus(422);
     }
 
     public function test_register_returns_validation_error_when_email_is_missing(): void
