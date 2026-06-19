@@ -21,10 +21,11 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         ));
     }
 
-    public function test_register_user_successfully(): void
+    public function test_register_user_successfully_without_token(): void
     {
         $payload = [
             'model_type' => TestUserMail::class,
+            'with_token' => false,
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'password' => 'Password123!',
@@ -43,18 +44,42 @@ final class EmailRegisterActionTest extends IntegrationTestCase
                 'createdAt',
             ],
         ]);
-
-        $response->assertJson([
-            'message' => 'User registered successfully',
-            'user' => [
-                'name' => 'John Doe',
-                'email' => 'john@example.com',
-            ],
-        ]);
+        $response->assertJsonMissing(['token']);
 
         $this->assertDatabaseHas('test_users', [
             'name' => 'John Doe',
             'email' => 'john@example.com',
+        ]);
+    }
+
+    public function test_register_user_successfully_with_token(): void
+    {
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'name' => 'Jane Doe',
+            'email' => 'jane@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        $response = $this->postJson('/api/register', $payload);
+
+        $response->assertStatus(201);
+        $response->assertJsonStructure([
+            'message',
+            'user' => [
+                'id',
+                'name',
+                'email',
+                'createdAt',
+            ],
+            'token',
+        ]);
+
+        $this->assertDatabaseHas('test_users', [
+            'name' => 'Jane Doe',
+            'email' => 'jane@example.com',
         ]);
     }
 
@@ -105,10 +130,10 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         $response->assertJsonValidationErrors(['password']);
     }
 
-    public function test_register_returns_error_when_model_type_does_not_implement_mail_authenticatable(): void
+    public function test_register_returns_error_when_model_type_does_not_exist(): void
     {
         $payload = [
-            'model_type' => 'stdClass',
+            'model_type' => 'NonExistentClass',
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'password' => 'Password123!',
@@ -125,6 +150,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
     {
         $payload = [
             'model_type' => TestUserMail::class,
+            'with_token' => false,
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'password' => 'Password123!',
@@ -169,7 +195,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         $response->assertJsonValidationErrors(['model_type']);
     }
 
-    public function test_register_returns_error_when_model_type_is_empty_string(): void
+    public function test_register_returns_validation_error_when_model_type_is_empty_string(): void
     {
         $payload = [
             'model_type' => '',

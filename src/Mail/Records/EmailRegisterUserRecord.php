@@ -11,6 +11,7 @@ final class EmailRegisterUserRecord extends AbstractRecord
 {
     public function __construct(
         public readonly string $model_type,
+        public readonly bool $with_token,
         public readonly StrictDataObject $data,
     ) {}
 }

@@ -15,6 +15,7 @@ final class EmailRegisterRequest extends AbstractRequest
     {
         return [
             'model_type' => ['required', 'string'],
+            'with_token' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -22,7 +23,8 @@ final class EmailRegisterRequest extends AbstractRequest
     {
         return new EmailRegisterUserRecord(
             model_type: $this->input('model_type'),
-            data: StrictDataObject::from($this->except('model_type')),
+            with_token: $this->input('with_token', false),
+            data: StrictDataObject::from($this->except(['model_type', 'with_token'])),
         );
     }
 }

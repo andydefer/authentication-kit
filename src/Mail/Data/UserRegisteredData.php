@@ -12,5 +12,6 @@ final class UserRegisteredData extends AbstractData
     public function __construct(
         public readonly string $message,
         public readonly DataObject $user,
+        public readonly ?string $token = null,
     ) {}
 }

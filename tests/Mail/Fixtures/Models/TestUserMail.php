@@ -63,12 +63,13 @@ final class TestUserMail extends Model implements MailAuthenticatable
         return $user;
     }
 
-    public function nemesisFormat(): AbstractRecord
+    public function nemesisFormat(): AbstractData
     {
-        return new TestUserMailRecord(
+        return new TestUserMailData(
+            id: $this->id,
             name: $this->name,
             email: $this->email,
-            password: $this->password,
+            createdAt: $this->created_at?->toIso8601String(),
         );
     }
 
@@ -78,16 +79,6 @@ final class TestUserMail extends Model implements MailAuthenticatable
             name: $this->name,
             email: $this->email,
             password: $this->password,
-        );
-    }
-
-    public function getOutputData(): AbstractData
-    {
-        return new TestUserMailData(
-            id: $this->id,
-            name: $this->name,
-            email: $this->email,
-            createdAt: $this->created_at?->toIso8601String(),
         );
     }
 }

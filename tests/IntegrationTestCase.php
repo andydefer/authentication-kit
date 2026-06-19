@@ -55,6 +55,13 @@ abstract class IntegrationTestCase extends Orchestra
 
     protected function runMigrations(): void
     {
+        // Charger les migrations de Nemesis
+        $nemesisMigrationsPath = __DIR__.'/../vendor/andydefer/laravel-nemesis/database/migrations';
+        if (is_dir($nemesisMigrationsPath)) {
+            $this->loadMigrationsFrom($nemesisMigrationsPath);
+        }
+
+        // Charger les migrations de test
         $testMigrationsPath = __DIR__.'/Mail/Fixtures/database/migrations';
         if (is_dir($testMigrationsPath)) {
             $this->loadMigrationsFrom($testMigrationsPath);
