@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Entities;
 
+use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
-use AndyDefer\DomainStructures\Collections\Utility\StringTypedCollection;
+use Illuminate\Validation\Validator;
 
 final class EmailAuthenticatableEntity
 {
@@ -33,8 +34,13 @@ final class EmailAuthenticatableEntity
         return $this->authenticatable->getAuthIdentifier()->remember_token_field;
     }
 
-    public function getFillableFields(): StringTypedCollection
+    public function getValidationRules(): array
     {
-        return $this->authenticatable->getFillableFields();
+        return $this->authenticatable->getValidationRules();
+    }
+
+    public function createUser(Validator $validator): Authenticatable
+    {
+        return $this->authenticatable->createUser($validator);
     }
 }
