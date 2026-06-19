@@ -1,0 +1,42 @@
+{
+    "name": "andydefer/authentication-kit",
+    "description": "Headless authentication kit for Laravel built on Nemesis and Laravel Actions",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Andy Defer",
+            "email": "andykanidimbu@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2|^8.3|^8.4",
+        "andydefer/laravel-nemesis": "^1.6.11",
+        "andydefer/laravel-actions": "^2.4.5"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "phpunit/phpunit": "^10.5|^11.0",
+        "mockery/mockery": "^1.6",
+        "laravel/pint": "^1.29"
+    },
+    "autoload": {
+        "psr-4": {
+            "AndyDefer\\AuthenticationKit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "AndyDefer\\AuthenticationKit\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "AndyDefer\\AuthenticationKit\\AuthenticationKitServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

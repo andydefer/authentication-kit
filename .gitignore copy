@@ -1,0 +1,17 @@
+# Dépendances Composer
+/vendor/
+composer.lock
+
+# Documentation générée
+/docs/
+diff.txt
+note.md
+
+# Scripts (si ce sont des scripts temporaires ou locaux)
+/scripts/
+
+# Fichiers de configuration locaux (optionnel)
+/.phpunit.result.cache
+/.idea/
+/.vscode/
+rector.md
