@@ -9,6 +9,7 @@ use AndyDefer\AuthenticationKit\AuthenticationKitServiceProvider;
 use AndyDefer\Logger\LoggerServiceProvider;
 use AndyDefer\Nemesis\NemesisServiceProvider;
 use Carbon\Carbon;
+use Illuminate\Routing\Router;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class IntegrationTestCase extends Orchestra
@@ -16,6 +17,9 @@ abstract class IntegrationTestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+
+        $router = $this->app->make(Router::class);
+        $middleware = $router->getMiddleware();
 
         Carbon::setTestNow(Carbon::create(2024, 1, 1, 12, 0, 0));
 

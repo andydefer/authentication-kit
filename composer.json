@@ -13,9 +13,9 @@
         "php": "^8.1",
         "andydefer/laravel-actions": "^2.4.6",
         "andydefer/directive-forge": "^2.9.3",
-        "andydefer/laravel-nemesis": "^1.7.2",
         "andydefer/laravel-logger": "^3.8.1",
-        "jenssegers/agent": "^2.6"
+        "jenssegers/agent": "^2.6",
+        "andydefer/laravel-nemesis": "^1.8"
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0",

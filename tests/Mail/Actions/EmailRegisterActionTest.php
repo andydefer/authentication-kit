@@ -19,13 +19,13 @@ final class EmailRegisterActionTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        $this->app['router']->post('/api/register', action_route(
+        $this->app['router']->middleware(['validate.mail.authenticatable'])->post('/api/register', action_route(
             EmailRegisterRequest::class,
             EmailRegisterAction::class
         ));
     }
 
-    public function test_register_user_successfully_without_token(): void
+    public function test_register_auth_successfully_without_token(): void
     {
         $payload = [
             'model_type' => TestUserMail::class,
@@ -41,7 +41,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         $response->assertStatus(201);
         $response->assertJsonStructure([
             'message',
-            'user' => [
+            'auth' => [
                 'id',
                 'name',
                 'email',
@@ -56,7 +56,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         ]);
     }
 
-    public function test_register_user_successfully_with_token(): void
+    public function test_register_auth_successfully_with_token(): void
     {
         $payload = [
             'model_type' => TestUserMail::class,
@@ -72,7 +72,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         $response->assertStatus(201);
         $response->assertJsonStructure([
             'message',
-            'user' => [
+            'auth' => [
                 'id',
                 'name',
                 'email',
@@ -97,7 +97,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             ->with(Mockery::on(function (LogDataRecord $log) {
                 return $log->type === 'auth'
                     && $log->payload->event === EventType::USER_REGISTRATION_SUCCESS->value
-                    && isset($log->payload->user_id)
+                    && isset($log->payload->auth_id)
                     && isset($log->payload->platform)
                     && isset($log->payload->browser)
                     && isset($log->payload->device_type)
@@ -211,7 +211,11 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         $response = $this->postJson('/api/register', $payload);
 
         $response->assertStatus(500);
-        $response->assertSee('Server Error');
+        $response->assertJson([
+            'message' => 'Model NonExistentClass does not exist',
+            'status' => 500,
+            'errorCode' => 'MODEL_NOT_FOUND',
+        ]);
     }
 
     public function test_register_prevents_duplicate_email(): void
@@ -259,8 +263,12 @@ final class EmailRegisterActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/register', $payload);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['model_type']);
+        $response->assertStatus(400);
+        $response->assertJson([
+            'message' => 'model_type is required',
+            'status' => 400,
+            'errorCode' => 'MODEL_TYPE_REQUIRED',
+        ]);
     }
 
     public function test_register_returns_validation_error_when_model_type_is_empty_string(): void
@@ -275,7 +283,11 @@ final class EmailRegisterActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/register', $payload);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['model_type']);
+        $response->assertStatus(400);
+        $response->assertJson([
+            'message' => 'model_type is required',
+            'status' => 400,
+            'errorCode' => 'MODEL_TYPE_REQUIRED',
+        ]);
     }
 }
