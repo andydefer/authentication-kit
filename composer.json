@@ -14,7 +14,7 @@
         "andydefer/directive-forge": "^2.9.7",
         "jenssegers/agent": "^2.6",
         "andydefer/laravel-nemesis": "^1.8.5",
-        "andydefer/laravel-notification": "^1.0.7"
+        "andydefer/laravel-notification": "^1.0.8"
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0",
