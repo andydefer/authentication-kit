@@ -7,6 +7,7 @@ namespace AndyDefer\AuthenticationKit\Mail;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Http\Middleware\ValidateMailAuthenticatable;
@@ -47,6 +48,17 @@ final class MailServiceProvider extends ServiceProvider
                     logRepository: $app->make(LogRepositoryInterface::class),
                     agent: $app->make(AgentInterface::class),
                     config: $app->make(AuthenticationKitConfig::class),
+                );
+            }
+        );
+
+        // ✅ EmailLogoutAction - bind action to container
+        $this->app->singleton(
+            abstract: EmailLogoutAction::class,
+            concrete: function ($app): EmailLogoutAction {
+                return new EmailLogoutAction(
+                    nemesis: $app->make(NemesisInterface::class),
+                    logRepository: $app->make(LogRepositoryInterface::class),
                 );
             }
         );

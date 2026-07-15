@@ -31,7 +31,9 @@ final class TestUser extends Model implements MustNemesis
     protected $fillable = [
         'name',
         'email',
+        'password',
         'email_verified_at',
+        'deleted_at',
     ];
 
     /**
@@ -40,6 +42,8 @@ final class TestUser extends Model implements MustNemesis
     protected $casts = [
         'email_verified_at' => 'datetime',
         'deleted_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     /**
@@ -72,6 +76,14 @@ final class TestUser extends Model implements MustNemesis
     }
 
     /**
+     * Get the email verification timestamp.
+     */
+    public function getEmailVerifiedAt(): ?string
+    {
+        return $this->email_verified_at?->toIso8601String();
+    }
+
+    /**
      * Define the format for authenticated API responses.
      * Returns a Record, not an array.
      */
@@ -82,6 +94,7 @@ final class TestUser extends Model implements MustNemesis
             'name' => $this->name,
             'email' => $this->email,
             'email_verified_at' => $this->email_verified_at,
+            'deleted_at' => $this->deleted_at,
         ]);
     }
 }

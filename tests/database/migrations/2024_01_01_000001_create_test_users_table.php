@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -37,7 +35,7 @@ return new class extends Migration
             $table->string('remember_token')->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->timestamps();
-            $table->softDeletes();
+            $table->softDeletes(); // ✅ Ajoute deleted_at
         });
     }
 
@@ -51,7 +49,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('api_key')->unique();
             $table->timestamps();
-            $table->softDeletes();
+            $table->softDeletes(); // ✅ Ajoute deleted_at
         });
     }
 

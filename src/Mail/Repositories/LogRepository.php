@@ -15,7 +15,7 @@ use Jenssegers\Agent\Agent;
 /**
  * Repository for authentication event logging.
  *
- * Handles logging of registration and login events with contextual
+ * Handles logging of registration, login, and logout events with contextual
  * information about the request (IP, user agent, device, etc.).
  */
 final class LogRepository implements LogRepositoryInterface
@@ -73,7 +73,7 @@ final class LogRepository implements LogRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function logLoginSuccess(
+    public function loginSuccess(
         int $authId,
         string $modelClass,
         string $email,
@@ -95,7 +95,7 @@ final class LogRepository implements LogRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function logLoginFailure(
+    public function loginFailure(
         string $modelClass,
         string $email,
         string $error,
@@ -106,6 +106,166 @@ final class LogRepository implements LogRepositoryInterface
                 'event' => EventType::USER_LOGIN_FAILED->value,
                 'model_type' => $modelClass,
                 'email' => $email,
+                'error' => $error,
+                'error_class' => $errorClass,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logoutSuccess(
+        int $authId,
+        string $modelClass,
+        string $email,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => EventType::USER_LOGOUT_SUCCESS->value,
+                'auth_id' => $authId,
+                'model_type' => $modelClass,
+                'email' => $email,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logoutFailure(
+        string $modelClass,
+        string $email,
+        string $error,
+        string $errorClass,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => EventType::USER_LOGOUT_FAILED->value,
+                'model_type' => $modelClass,
+                'email' => $email,
+                'error' => $error,
+                'error_class' => $errorClass,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logPasswordResetLinkSent(
+        string $email,
+        bool $success,
+        ?string $error = null,
+        ?string $errorClass = null,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => $success
+                    ? EventType::USER_PASSWORD_RESET_LINK_SENT->value
+                    : EventType::USER_PASSWORD_RESET_LINK_FAILED->value,
+                'email' => $email,
+                'success' => $success,
+                'error' => $error,
+                'error_class' => $errorClass,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logPasswordResetSuccess(
+        string $email,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => EventType::USER_PASSWORD_RESET_SUCCESS->value,
+                'email' => $email,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logPasswordResetFailure(
+        string $email,
+        string $error,
+        string $errorClass,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => EventType::USER_PASSWORD_RESET_FAILED->value,
+                'email' => $email,
+                'error' => $error,
+                'error_class' => $errorClass,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logVerificationSuccess(
+        string $email,
+        string $modelClass,
+        bool $alreadyVerified = false,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => $alreadyVerified
+                    ? EventType::EMAIL_VERIFICATION_ALREADY_VERIFIED->value
+                    : EventType::EMAIL_VERIFICATION_SUCCESS->value,
+                'email' => $email,
+                'model_type' => $modelClass,
+                'already_verified' => $alreadyVerified,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logVerificationFailure(
+        string $email,
+        string $modelClass,
+        string $error,
+        string $errorClass,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => EventType::EMAIL_VERIFICATION_FAILED->value,
+                'email' => $email,
+                'model_type' => $modelClass,
                 'error' => $error,
                 'error_class' => $errorClass,
             ]);

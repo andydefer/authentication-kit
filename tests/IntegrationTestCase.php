@@ -6,8 +6,12 @@ namespace AndyDefer\AuthenticationKit\Tests;
 
 use AndyDefer\Actions\ActionServiceProvider;
 use AndyDefer\AuthenticationKit\AuthenticationKitServiceProvider;
+use AndyDefer\AuthenticationKit\Tests\Mail\Providers\TestMailServiceProvider;
+use AndyDefer\LaravelNotification\NotificationServiceProvider;
+use AndyDefer\LaravelOtp\OtpServiceProvider;
 use AndyDefer\Logger\LoggerServiceProvider;
 use AndyDefer\Nemesis\NemesisServiceProvider;
+use AndyDefer\Task\TaskServiceProvider;
 use Carbon\Carbon;
 use Illuminate\Routing\Router;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -38,7 +42,11 @@ abstract class IntegrationTestCase extends Orchestra
         return [
             LoggerServiceProvider::class,
             NemesisServiceProvider::class,
+            NotificationServiceProvider::class,   // ✅ Ajout du provider de notification
+            TaskServiceProvider::class,           // ✅ Virgule ajoutée
             ActionServiceProvider::class,
+            TestMailServiceProvider::class,
+            OtpServiceProvider::class,
             AuthenticationKitServiceProvider::class,
         ];
     }
@@ -60,6 +68,17 @@ abstract class IntegrationTestCase extends Orchestra
 
         $app['config']->set('authentication-kit.token_name', 'authentication-kit');
 
+        // ✅ Configuration des notifications pour les tests
+        $app['config']->set('notification.channels.mail', [
+            'enabled' => true,
+            'default_from' => 'test@example.com',
+            'default_from_name' => 'Test App',
+        ]);
+
+        $app['config']->set('notification.channels.database', [
+            'driver' => 'database',
+            'table' => 'notifications',
+        ]);
     }
 
     protected function runMigrations(): void
@@ -68,6 +87,12 @@ abstract class IntegrationTestCase extends Orchestra
         $nemesisMigrationsPath = __DIR__.'/../vendor/andydefer/laravel-nemesis/database/migrations';
         if (is_dir($nemesisMigrationsPath)) {
             $this->loadMigrationsFrom($nemesisMigrationsPath);
+        }
+
+        // Charger les migrations de Laravel Notification
+        $notificationMigrationsPath = __DIR__.'/../vendor/andydefer/laravel-notification/database/migrations';
+        if (is_dir($notificationMigrationsPath)) {
+            $this->loadMigrationsFrom($notificationMigrationsPath);
         }
 
         // Charger les migrations de test

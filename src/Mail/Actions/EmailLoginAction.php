@@ -148,7 +148,7 @@ final class EmailLoginAction extends AbstractAction
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->success && $this->authId !== null) {
-            $this->logRepository->logLoginSuccess(
+            $this->logRepository->loginSuccess(
                 authId: $this->authId,
                 modelClass: $this->modelClass,
                 email: $this->email ?? 'unknown',
@@ -156,7 +156,7 @@ final class EmailLoginAction extends AbstractAction
         }
 
         if (! $this->success && $error !== null) {
-            $this->logRepository->logLoginFailure(
+            $this->logRepository->loginFailure(
                 modelClass: $this->modelClass ?? 'unknown',
                 email: $this->email ?? 'unknown',
                 error: $error->getMessage(),

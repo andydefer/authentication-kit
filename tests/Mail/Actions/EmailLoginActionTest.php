@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
-use AndyDefer\AuthenticationKit\Enums\EventType;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
+use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLoginRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
-use AndyDefer\Logger\Contracts\LoggerInterface;
-use AndyDefer\Logger\Records\LogDataRecord;
 use Mockery;
 
 final class EmailLoginActionTest extends IntegrationTestCase
@@ -135,29 +133,22 @@ final class EmailLoginActionTest extends IntegrationTestCase
 
     public function test_login_logs_successful_login(): void
     {
-        TestUserMail::create([
+        $user = TestUserMail::create([
             'name' => 'Jane Doe',
             'email' => 'jane@example.com',
             'password' => bcrypt('Password123!'),
         ]);
 
-        $logger = Mockery::mock(LoggerInterface::class);
-        $this->app->instance(LoggerInterface::class, $logger);
+        $logRepository = Mockery::mock(LogRepositoryInterface::class);
+        $this->app->instance(LogRepositoryInterface::class, $logRepository);
 
-        $logger->shouldReceive('info')
+        $logRepository->shouldReceive('loginSuccess')
             ->once()
-            ->with(Mockery::on(function (LogDataRecord $log) {
-                return $log->type === 'auth'
-                    && $log->payload->event === EventType::USER_LOGIN_SUCCESS->value
-                    && isset($log->payload->auth_id)
-                    && isset($log->payload->email)
-                    && isset($log->payload->platform)
-                    && isset($log->payload->browser)
-                    && isset($log->payload->device_type)
-                    && isset($log->payload->ip)
-                    && isset($log->payload->user_agent)
-                    && $log->payload->model_type === TestUserMail::class;
-            }));
+            ->with(
+                $user->id,
+                TestUserMail::class,
+                $user->email
+            );
 
         $payload = [
             'model_type' => TestUserMail::class,

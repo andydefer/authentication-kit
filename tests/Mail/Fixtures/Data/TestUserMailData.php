@@ -12,6 +12,9 @@ final class TestUserMailData extends AbstractData
         public readonly int $id,
         public readonly string $name,
         public readonly string $email,
-        public readonly ?string $createdAt,
+        public readonly ?string $emailVerifiedAt = null,
+        public readonly ?string $createdAt = null,
+        public readonly ?string $updatedAt = null,
+        public readonly ?string $deletedAt = null,
     ) {}
 }
