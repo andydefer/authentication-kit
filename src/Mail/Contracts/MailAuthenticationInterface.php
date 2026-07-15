@@ -55,4 +55,12 @@ interface MailAuthenticationInterface
      * Check if user's email is verified.
      */
     public function isEmailVerified(Authenticatable&Model $authenticatable): bool;
+
+    /**
+     * Check if a user exists with the given email.
+     *
+     * @param  string  $email  The email to check
+     * @return bool True if the user exists
+     */
+    public function userExists(string $email): bool;
 }

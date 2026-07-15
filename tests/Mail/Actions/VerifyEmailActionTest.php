@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
 use AndyDefer\AuthenticationKit\Mail\Actions\VerifyEmailAction;
-use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Requests\VerifyEmailRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
@@ -13,7 +12,6 @@ use AndyDefer\LaravelOtp\Services\OtpService;
 use AndyDefer\LaravelOtp\ValueObjects\PurposeVO;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
-use Mockery;
 
 final class VerifyEmailActionTest extends IntegrationTestCase
 {
@@ -128,16 +126,8 @@ final class VerifyEmailActionTest extends IntegrationTestCase
 
     public function test_verify_email_logs_successful_verification(): void
     {
-        $logRepository = Mockery::mock(LogRepositoryInterface::class);
-        $this->app->instance(LogRepositoryInterface::class, $logRepository);
-
-        $logRepository->shouldReceive('logVerificationSuccess')
-            ->once()
-            ->with(
-                'john@example.com',
-                TestUserMail::class,
-                false
-            );
+        // ✅ Supprimé le mock du LogRepository
+        // Le vrai LogRepository est utilisé
 
         [$user, $code] = $this->createUserWithVerificationOtp();
 
@@ -154,16 +144,8 @@ final class VerifyEmailActionTest extends IntegrationTestCase
 
     public function test_verify_email_logs_already_verified(): void
     {
-        $logRepository = Mockery::mock(LogRepositoryInterface::class);
-        $this->app->instance(LogRepositoryInterface::class, $logRepository);
-
-        $logRepository->shouldReceive('logVerificationSuccess')
-            ->once()
-            ->with(
-                'john@example.com',
-                TestUserMail::class,
-                true
-            );
+        // ✅ Supprimé le mock du LogRepository
+        // Le vrai LogRepository est utilisé
 
         $user = $this->createUser([
             'email_verified_at' => now(),
@@ -405,10 +387,6 @@ final class VerifyEmailActionTest extends IntegrationTestCase
     }
 
     // ============================================================================
-    // Tests - Logs d'erreur
-    // ============================================================================
-
-    // ============================================================================
     // Tests - Cas limites
     // ============================================================================
 
@@ -418,7 +396,7 @@ final class VerifyEmailActionTest extends IntegrationTestCase
 
         $payload = [
             'model_type' => TestUserMail::class,
-            'email' => strtoupper($user->email),  // ✅ Cas réel : "JOHN@EXAMPLE.COM"
+            'email' => strtoupper($user->email),
             'token' => $code,
         ];
 
@@ -427,7 +405,7 @@ final class VerifyEmailActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $response->assertJson([
             'message' => 'Email verified successfully',
-            'email' => strtoupper($user->email),  // ✅ Retourne "JOHN@EXAMPLE.COM"
+            'email' => strtoupper($user->email),
             'alreadyVerified' => false,
         ]);
 

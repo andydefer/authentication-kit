@@ -18,7 +18,7 @@ final class VerifyEmailRequest extends AbstractRequest
         return [
             'model_type' => ['required', 'string'],
             'email' => ['required', 'email'],
-            'token' => ['required', 'string', new ValidOtpRule(self::EMAIL_VERIFICATION_PURPOSE)],
+            'token' => ['required', 'string', new ValidOtpRule],
         ];
     }
 

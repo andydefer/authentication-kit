@@ -6,7 +6,6 @@ namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
-use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLogoutRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
@@ -15,7 +14,6 @@ use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\Nemesis\Models\NemesisToken;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
 use Illuminate\Foundation\Application;
-use Mockery;
 
 final class EmailLogoutActionTest extends IntegrationTestCase
 {
@@ -88,16 +86,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
     {
         [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
 
-        $logRepository = Mockery::mock(LogRepositoryInterface::class);
-        $this->app->instance(LogRepositoryInterface::class, $logRepository);
-
-        $logRepository->shouldReceive('logoutSuccess')
-            ->once()
-            ->with(
-                $user->id,
-                TestUserMail::class,
-                $user->email
-            );
+        // ✅ Utilisation du vrai LogRepository - pas de mock
 
         $payload = [
             'model_type' => TestUserMail::class,

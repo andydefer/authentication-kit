@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AndyDefer\AuthenticationKit\Mail\Data;
+namespace AndyDefer\AuthenticationKit\Mail\Datas;
 
 use AndyDefer\DomainStructures\Abstracts\AbstractData;
 

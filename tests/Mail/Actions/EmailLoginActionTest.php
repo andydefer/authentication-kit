@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
-use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLoginRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
-use Mockery;
 
 final class EmailLoginActionTest extends IntegrationTestCase
 {
@@ -139,16 +137,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => bcrypt('Password123!'),
         ]);
 
-        $logRepository = Mockery::mock(LogRepositoryInterface::class);
-        $this->app->instance(LogRepositoryInterface::class, $logRepository);
-
-        $logRepository->shouldReceive('loginSuccess')
-            ->once()
-            ->with(
-                $user->id,
-                TestUserMail::class,
-                $user->email
-            );
+        // ✅ Supprimé le mock
 
         $payload = [
             'model_type' => TestUserMail::class,

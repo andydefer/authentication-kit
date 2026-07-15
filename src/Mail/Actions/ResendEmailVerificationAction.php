@@ -8,7 +8,7 @@ use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
-use AndyDefer\AuthenticationKit\Mail\Data\EmailVerificationResentData;
+use AndyDefer\AuthenticationKit\Mail\Datas\EmailVerificationResentData;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\ResendEmailVerificationRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
@@ -100,7 +100,6 @@ final class ResendEmailVerificationAction extends AbstractAction
                 );
             }
 
-            // ✅ Renvoyer l'OTP
             $sent = $this->authService->resendEmailVerificationOtp($authenticatable);
 
             if (! $sent) {
@@ -151,6 +150,7 @@ final class ResendEmailVerificationAction extends AbstractAction
         }
 
         if ($this->success) {
+
             $this->logRepository->logVerificationSuccess(
                 email: $this->email,
                 modelClass: $this->modelType,

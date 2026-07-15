@@ -13,7 +13,7 @@ final class SendPasswordResetLinkRequest extends AbstractRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email', 'exists:users,email'],
+            'email' => ['required', 'email'],
         ];
     }
 
@@ -29,7 +29,6 @@ final class SendPasswordResetLinkRequest extends AbstractRequest
         return [
             'email.required' => 'Email is required',
             'email.email' => 'Please provide a valid email address',
-            'email.exists' => 'No user found with this email address',
         ];
     }
 }

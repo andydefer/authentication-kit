@@ -12,7 +12,6 @@ use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\LaravelNotification\Builders\NotifiableBuilder;
 use AndyDefer\LaravelNotification\Channels\MailChannel;
-use AndyDefer\LaravelNotification\Services\NotificationService;
 use AndyDefer\LaravelNotification\ValueObjects\MessageBodyVO;
 use AndyDefer\LaravelNotification\ValueObjects\MessageSubjectVO;
 use AndyDefer\LaravelNotification\ValueObjects\NotificationMessageVO;
@@ -31,10 +30,11 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
 
     private const PASSWORD_RESET_PURPOSE = 'password_reset';
 
+    private const RATE_LIMIT_ATTEMPTS = 1; // ✅ Seuil pour les tests
+
     public function __construct(
         private readonly NemesisInterface $nemesis,
         private readonly OtpService $otpService,
-        private readonly NotificationService $notificationService,
     ) {}
 
     public function register(AbstractRecord $record): Model&Authenticatable
@@ -61,7 +61,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
 
         $user = TestUserMail::create([
             'name' => $validated['name'],
-            'email' => $validated['email'],
+            'email' => strtolower($validated['email']), // ✅ Normalisation
             'password' => bcrypt($validated['password']),
         ]);
 
@@ -70,7 +70,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
 
     public function login(string $email, string $password): ?NemesisTokenRecord
     {
-        $user = TestUserMail::where('email', $email)->first();
+        $user = TestUserMail::where('email', strtolower($email))->first(); // ✅ Normalisation
 
         if ($user === null) {
             return null;
@@ -106,7 +106,8 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
      */
     public function sendPasswordResetOtp(string $email): bool
     {
-        $user = TestUserMail::where('email', $email)->first();
+        $normalizedEmail = strtolower($email); // ✅ Normalisation
+        $user = TestUserMail::where('email', $normalizedEmail)->first();
 
         if ($user === null) {
             return false;
@@ -114,20 +115,20 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
 
         $purpose = $this->getPasswordResetPurpose();
 
-        if ($this->otpService->isRateLimited($user, $purpose)) {
+        // ✅ Vérifier le rate limit avec un seuil bas pour les tests
+        if ($this->otpService->isRateLimited($user, $purpose, self::RATE_LIMIT_ATTEMPTS)) {
             return false;
         }
 
         // ✅ Créer l'OTP
         $otp = $this->otpService->create($user, $purpose);
 
-        // ✅ Envoyer la notification par email en utilisant NotifiableBuilder
+        // ✅ Envoyer la notification par email
         $message = new NotificationMessageVO(
             body: new MessageBodyVO("Your password reset code is: {$otp->code}"),
             subject: new MessageSubjectVO('Password Reset Code'),
         );
 
-        // ✅ Utiliser NotifiableBuilder pour envoyer uniquement à l'email de l'utilisateur
         $results = NotifiableBuilder::create()
             ->to(MailChannel::class, $user->email)
             ->subject($message->getSubjectValue())
@@ -145,7 +146,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
      */
     public function resetPassword(string $email, string $code, string $password): bool
     {
-        $user = TestUserMail::where('email', $email)->first();
+        $user = TestUserMail::where('email', strtolower($email))->first(); // ✅ Normalisation
 
         if ($user === null) {
             return false;
@@ -194,14 +195,18 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
             purpose: $purpose,
         );
 
-        // ✅ Envoyer la notification par email en utilisant NotifiableBuilder
-        // ✅ Filtre : uniquement l'email de l'authenticatable
+        // ✅ Envoyer la notification par email
+        $message = new NotificationMessageVO(
+            body: new MessageBodyVO("Your email verification code is: {$otp->code}"),
+            subject: new MessageSubjectVO('Email Verification Code'),
+        );
+
         $results = NotifiableBuilder::create()
             ->to(MailChannel::class, $authenticatable->email)
-            ->subject("Your email verification code is: {$otp->code}")
-            ->body("Your email verification code is: {$otp->code}")
-            ->type('email_verification')
-            ->data(['user_id' => $authenticatable->id])
+            ->subject($message->getSubjectValue())
+            ->body($message->getBodyValue())
+            ->type($message->getType())
+            ->data($message->getData()->toArray())
             ->limit(1)
             ->sendNow();
 
@@ -213,7 +218,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
      */
     public function verifyEmail(string $email, string $code): bool
     {
-        $user = TestUserMail::where('email', $email)->first();
+        $user = TestUserMail::where('email', strtolower($email))->first(); // ✅ Normalisation
 
         if ($user === null) {
             return false;
@@ -259,6 +264,14 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
         }
 
         return $authenticatable->email_verified_at !== null;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function userExists(string $email): bool
+    {
+        return TestUserMail::where('email', strtolower($email))->exists(); // ✅ Normalisation
     }
 
     /**

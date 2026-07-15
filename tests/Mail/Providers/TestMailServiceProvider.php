@@ -6,7 +6,6 @@ namespace AndyDefer\AuthenticationKit\Tests\Mail\Providers;
 
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Services\TestUserMailAuthenticationService;
-use AndyDefer\LaravelNotification\Contracts\Services\NotificationServiceInterface;
 use AndyDefer\LaravelOtp\Services\OtpService;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use Illuminate\Support\ServiceProvider;
@@ -22,7 +21,6 @@ final class TestMailServiceProvider extends ServiceProvider
                 return new TestUserMailAuthenticationService(
                     nemesis: $app->make(NemesisInterface::class),
                     otpService: $app->make(OtpService::class),
-                    notificationService: $app->make(NotificationServiceInterface::class)
                 );
             }
         );

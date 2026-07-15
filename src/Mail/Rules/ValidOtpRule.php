@@ -12,11 +12,14 @@ use Illuminate\Database\Eloquent\Model;
 
 final class ValidOtpRule implements ValidationRule
 {
-    private const EMAIL_VERIFICATION_PURPOSE = 'email_verification';
-
     private ?Model $authenticatable = null;
 
-    public function __construct() {}
+    private string $purposeValue;
+
+    public function __construct(string $purposeValue = 'email_verification')
+    {
+        $this->purposeValue = $purposeValue;
+    }
 
     public function getAuthenticatable(): ?Model
     {
@@ -57,7 +60,7 @@ final class ValidOtpRule implements ValidationRule
         /** @var Model $modelClass */
         $modelClass = $modelType;
 
-        // ✅ Normaliser l'email pour la recherche (lowercase + trim)
+        // ✅ Normaliser l'email
         $normalizedEmail = strtolower(trim($email));
 
         $authenticatable = $modelClass::where('email', $normalizedEmail)->first();
@@ -72,10 +75,11 @@ final class ValidOtpRule implements ValidationRule
 
         $otpService = app(OtpService::class);
 
+        // ✅ Utiliser le PurposeValue passé au constructeur
         $purpose = new PurposeVO(
-            value: self::EMAIL_VERIFICATION_PURPOSE,
-            label: 'Email Verification',
-            ttl: 300,
+            value: $this->purposeValue,
+            label: ucfirst(str_replace('_', ' ', $this->purposeValue)),
+            ttl: $this->purposeValue === 'password_reset' ? 600 : 300,
             maxAttempts: 3
         );
 

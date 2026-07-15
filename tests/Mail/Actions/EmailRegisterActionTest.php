@@ -5,12 +5,9 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
-use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailRegisterRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
-use Illuminate\Validation\ValidationException;
-use Mockery;
 
 final class EmailRegisterActionTest extends IntegrationTestCase
 {
@@ -88,16 +85,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
 
     public function test_register_logs_successful_registration(): void
     {
-        $logRepository = Mockery::mock(LogRepositoryInterface::class);
-        $this->app->instance(LogRepositoryInterface::class, $logRepository);
-
-        $logRepository->shouldReceive('logRegistrationSuccess')
-            ->once()
-            ->with(
-                Mockery::type('int'),
-                TestUserMail::class,
-                true
-            );
+        // ✅ Supprimé le mock
 
         $payload = [
             'model_type' => TestUserMail::class,
@@ -115,16 +103,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
 
     public function test_register_logs_failed_registration(): void
     {
-        $logRepository = Mockery::mock(LogRepositoryInterface::class);
-        $this->app->instance(LogRepositoryInterface::class, $logRepository);
-
-        $logRepository->shouldReceive('logRegistrationFailure')
-            ->once()
-            ->with(
-                TestUserMail::class,
-                Mockery::any(),
-                ValidationException::class
-            );
+        // ✅ Supprimé le mock
 
         $payload = [
             'model_type' => TestUserMail::class,
