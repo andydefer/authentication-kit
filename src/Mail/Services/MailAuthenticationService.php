@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Mail\Services;
 
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
@@ -32,7 +33,7 @@ use Illuminate\Validation\ValidationException;
  *
  * @template T of Model&MailAuthenticatable
  */
-final class MailAuthenticationService implements MailAuthenticationInterface
+class MailAuthenticationService implements MailAuthenticationInterface
 {
     private const EMAIL_VERIFICATION_PURPOSE = 'email_verification';
 
@@ -46,6 +47,7 @@ final class MailAuthenticationService implements MailAuthenticationInterface
         private readonly NemesisInterface $nemesis,
         private readonly OtpService $otpService,
         private readonly LogRepositoryInterface $logRepository,
+        private readonly AuthenticationKitConfigInterface $config,
     ) {
         if (! class_exists($modelClass)) {
             throw new \InvalidArgumentException("Model class {$modelClass} does not exist");
@@ -71,9 +73,14 @@ final class MailAuthenticationService implements MailAuthenticationInterface
         $nemesis = app(NemesisInterface::class);
         $otpService = app(OtpService::class);
         $logRepository = app(LogRepositoryInterface::class);
+        $config = app(AuthenticationKitConfigInterface::class);
 
-        return new self($modelClass, $nemesis, $otpService, $logRepository);
+        return new self($modelClass, $nemesis, $otpService, $logRepository, $config);
     }
+
+    // ========================================================================
+    // MÉTHODES PUBLIQUES FINALES
+    // ========================================================================
 
     /**
      * {@inheritDoc}
@@ -83,6 +90,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
         if (! $record instanceof EmailRegisterAuthRecord) {
             throw new \InvalidArgumentException('Invalid record type');
         }
+
+        $this->beforeRegister($record);
 
         $data = $record->data->toArray();
 
@@ -98,10 +107,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
             throw new ValidationException($validator);
         }
 
-        /** @var T $modelClass */
         $modelClass = $this->modelClass;
 
-        // ✅ On laisse l'erreur remonter telle quelle
         $user = $modelClass::generate($data);
 
         $this->logRepository->logRegistrationSuccess(
@@ -109,6 +116,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
             modelClass: $this->modelClass,
             withToken: $record->with_token,
         );
+
+        $this->afterRegister($user, $record);
 
         return $user;
     }
@@ -118,7 +127,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function login(string $email, string $password): ?NemesisTokenRecord
     {
-        /** @var T $modelClass */
+        $this->beforeLogin($email, $password);
+
         $modelClass = $this->modelClass;
 
         $user = $modelClass::where('email', strtolower($email))->first();
@@ -151,6 +161,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
             email: $email,
         );
 
+        $this->afterLogin($user);
+
         return new NemesisTokenRecord(
             name: 'auth-login',
             source: 'login',
@@ -166,6 +178,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function logout(Authenticatable&Model $authenticatable, string $plainToken): bool
     {
+        $this->beforeLogout($authenticatable, $plainToken);
+
         $token = $this->nemesis->getTokenByPlainText($plainToken, $authenticatable);
 
         if ($token === null) {
@@ -187,6 +201,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
                 modelClass: $this->modelClass,
                 email: $authenticatable->email ?? 'unknown',
             );
+
+            $this->afterLogout($authenticatable);
         } else {
             $this->logRepository->logoutFailure(
                 modelClass: $this->modelClass,
@@ -204,7 +220,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function sendPasswordResetOtp(string $email): bool
     {
-        /** @var T $modelClass */
+        $this->beforeSendPasswordResetOtp($email);
+
         $modelClass = $this->modelClass;
 
         $user = $modelClass::where('email', strtolower($email))->first();
@@ -217,18 +234,25 @@ final class MailAuthenticationService implements MailAuthenticationInterface
                 errorClass: 'UserNotFoundException',
             );
 
+            $this->afterSendPasswordResetOtp($email, false);
+
             return false;
         }
 
         $purpose = $this->getPasswordResetPurpose();
 
-        if ($this->otpService->isRateLimited($user, $purpose, 1)) {
+        // ✅ Utilisation de la configuration pour le rate limiting
+        $rateLimitAttempts = $this->config->getPasswordResetRateLimitAttempts();
+
+        if ($this->otpService->isRateLimited($user, $purpose, $rateLimitAttempts)) {
             $this->logRepository->logPasswordResetLinkSent(
                 email: $email,
                 success: false,
                 error: 'Rate limit exceeded',
                 errorClass: 'RateLimitException',
             );
+
+            $this->afterSendPasswordResetOtp($email, false);
 
             return false;
         }
@@ -246,6 +270,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
             success: true,
         );
 
+        $this->afterSendPasswordResetOtp($email, true);
+
         return true;
     }
 
@@ -254,7 +280,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function resetPassword(string $email, string $code, string $password): bool
     {
-        /** @var T $modelClass */
+        $this->beforeResetPassword($email, $code, $password);
+
         $modelClass = $this->modelClass;
 
         $user = $modelClass::where('email', strtolower($email))->first();
@@ -294,6 +321,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
             email: $email,
         );
 
+        $this->afterResetPassword($user);
+
         return true;
     }
 
@@ -314,7 +343,10 @@ final class MailAuthenticationService implements MailAuthenticationInterface
 
         $purpose = $this->getEmailVerificationPurpose();
 
-        if ($this->otpService->isRateLimited($authenticatable, $purpose)) {
+        // ✅ Utilisation de la configuration pour le rate limiting
+        $rateLimitAttempts = $this->config->getEmailVerificationRateLimitAttempts();
+
+        if ($this->otpService->isRateLimited($authenticatable, $purpose, $rateLimitAttempts)) {
             $this->logRepository->logVerificationFailure(
                 email: $authenticatable->email ?? 'unknown',
                 modelClass: $this->modelClass,
@@ -344,7 +376,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function verifyEmail(string $email, string $code): bool
     {
-        /** @var T $modelClass */
+        $this->beforeVerifyEmail($email, $code);
+
         $modelClass = $this->modelClass;
 
         $user = $modelClass::where('email', strtolower($email))->first();
@@ -366,6 +399,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
                 modelClass: $this->modelClass,
                 alreadyVerified: true,
             );
+
+            $this->afterVerifyEmail($user);
 
             return true;
         }
@@ -398,6 +433,8 @@ final class MailAuthenticationService implements MailAuthenticationInterface
             alreadyVerified: false,
         );
 
+        $this->afterVerifyEmail($user);
+
         return true;
     }
 
@@ -422,11 +459,138 @@ final class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function userExists(string $email): bool
     {
-        /** @var T $modelClass */
         $modelClass = $this->modelClass;
 
         return $modelClass::where('email', strtolower($email))->exists();
     }
+
+    // ========================================================================
+    // MÉTHODES PROTECTED - HOOKS EXTENSIBLES
+    // ========================================================================
+
+    /**
+     * Hook called before registration.
+     *
+     * Use case: IP check, anti-spam, custom validation.
+     */
+    protected function beforeRegister(AbstractRecord $record): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called after successful registration.
+     *
+     * Use case: send welcome email, create profile, assign roles.
+     */
+    protected function afterRegister(Model&Authenticatable $user, AbstractRecord $record): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called before login.
+     *
+     * Use case: check if account is locked, 2FA, IP whitelist.
+     */
+    protected function beforeLogin(string $email, string $password): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called after successful login.
+     *
+     * Use case: update last_login, log activity, create session.
+     */
+    protected function afterLogin(Model&Authenticatable $user): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called before logout.
+     *
+     * Use case: log activity, validate token.
+     */
+    protected function beforeLogout(Authenticatable&Model $authenticatable, string $plainToken): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called after successful logout.
+     *
+     * Use case: clear sessions, invalidate cache.
+     */
+    protected function afterLogout(Authenticatable&Model $authenticatable): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called before sending password reset OTP.
+     *
+     * Use case: check if email is allowed to reset password.
+     */
+    protected function beforeSendPasswordResetOtp(string $email): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called after sending password reset OTP.
+     *
+     * Use case: notify admin on failure.
+     */
+    protected function afterSendPasswordResetOtp(string $email, bool $success): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called before resetting password.
+     *
+     * Use case: additional password validation.
+     */
+    protected function beforeResetPassword(string $email, string $code, string $password): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called after successful password reset.
+     *
+     * Use case: invalidate all sessions, notify user.
+     */
+    protected function afterResetPassword(Model&Authenticatable $user): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called before email verification.
+     *
+     * Use case: additional checks before verification.
+     */
+    protected function beforeVerifyEmail(string $email, string $code): void
+    {
+        // Can be overridden by user
+    }
+
+    /**
+     * Hook called after successful email verification.
+     *
+     * Use case: activate account, send welcome notification.
+     */
+    protected function afterVerifyEmail(Model&Authenticatable $user): void
+    {
+        // Can be overridden by user
+    }
+
+    // ========================================================================
+    // MÉTHODES PRIVÉES
+    // ========================================================================
 
     /**
      * Send a notification email.
@@ -455,7 +619,6 @@ final class MailAuthenticationService implements MailAuthenticationInterface
      */
     private function getDefaultValidationRules(): array
     {
-        /** @var T $modelClass */
         $modelClass = $this->modelClass;
 
         $table = (new $modelClass)->getTable();

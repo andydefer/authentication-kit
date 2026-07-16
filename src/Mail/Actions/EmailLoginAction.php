@@ -22,6 +22,7 @@ use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Handles email-based user login authentication.
@@ -42,6 +43,10 @@ final class EmailLoginAction extends AbstractAction
     private ?string $ip = null;
 
     private ?string $userAgent = null;
+
+    private ?string $errorMessage = null;
+
+    private ?string $errorClass = null;
 
     public function __construct(
         private readonly NemesisInterface $nemesis,
@@ -83,86 +88,131 @@ final class EmailLoginAction extends AbstractAction
             throw new \InvalidArgumentException('Invalid record type');
         }
 
-        /** @var MailAuthenticatable&Model $modelClass */
-        $modelClass = $this->modelClass;
+        try {
+            /** @var MailAuthenticatable&Model $modelClass */
+            $modelClass = $this->modelClass;
 
-        $email = $record->data->get('email');
-        $password = $record->data->get('password');
+            $email = $record->data->get('email');
+            $password = $record->data->get('password');
 
-        if ($email === null || $password === null) {
+            if ($email === null || $password === null) {
+                $this->success = false;
+                $this->email = $email ?? 'unknown';
+                $this->errorMessage = 'Email and password are required';
+                $this->errorClass = 'MissingCredentialsException';
+
+                $errors = [];
+                if ($email === null) {
+                    $errors['email'] = ['The email field is required.'];
+                }
+                if ($password === null) {
+                    $errors['password'] = ['The password field is required.'];
+                }
+
+                return ResponseFactory::json(
+                    new ErrorResponseData(
+                        message: 'Email and password are required',
+                        status: 400,
+                        errorCode: 'MISSING_CREDENTIALS',
+                        errors: DataObject::from($errors),
+                    ),
+                    400
+                );
+            }
+
+            $this->email = $email;
+
+            $service = $modelClass::getMailAuthService();
+
+            $tokenRecord = $service->login($email, $password);
+
+            if ($tokenRecord === null) {
+                $this->success = false;
+                $this->errorMessage = 'Invalid credentials';
+                $this->errorClass = 'InvalidCredentialsException';
+
+                return ResponseFactory::json(
+                    new ErrorResponseData(
+                        message: 'Invalid credentials',
+                        status: 401,
+                        errorCode: 'INVALID_CREDENTIALS'
+                    ),
+                    401
+                );
+            }
+
+            $auth = $modelClass::where('email', $email)->first();
+
+            if ($auth === null) {
+                $this->success = false;
+                $this->errorMessage = 'Authenticatable not found';
+                $this->errorClass = 'AuthenticatableNotFoundException';
+
+                return ResponseFactory::json(
+                    new ErrorResponseData(
+                        message: 'Authenticatable not found',
+                        status: 404,
+                        errorCode: 'AUTHENTICATABLE_NOT_FOUND'
+                    ),
+                    404
+                );
+            }
+
+            $this->authId = $auth->getKey();
+            $this->success = true;
+
+            [$tokenModel, $plainToken] = $this->nemesis->createWithPlainToken(
+                new NemesisTokenRecord(
+                    name: $this->config->getTokenName(),
+                    source: TokenSource::LOGIN->value,
+                    metadata: new StrictDataObject([
+                        'device_type' => $this->agent->deviceType(),
+                        'platform' => $this->agent->platform(),
+                        'browser' => $this->agent->browser(),
+                        'ip' => $this->ip,
+                        'user_agent' => $this->userAgent,
+                    ]),
+                ),
+                $auth
+            );
+
+            return ResponseFactory::json(
+                new AuthLoginData(
+                    message: 'Login successful',
+                    auth: DataObject::from($auth->nemesisFormat()),
+                    token: $plainToken,
+                ),
+                200
+            );
+
+        } catch (ValidationException $e) {
             $this->success = false;
-            $this->email = $email ?? 'unknown';
+            $this->errorMessage = $e->getMessage();
+            $this->errorClass = get_class($e);
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Email and password are required',
-                    status: 400,
-                    errorCode: 'MISSING_CREDENTIALS'
+                    message: $e->getMessage(),
+                    status: 422,
+                    errorCode: 'VALIDATION_ERROR',
+                    errors: DataObject::from($e->errors()),
                 ),
-                400
+                422
             );
-        }
-
-        $this->email = $email;
-
-        $service = $modelClass::getMailAuthService();
-
-        $tokenRecord = $service->login($email, $password);
-
-        if ($tokenRecord === null) {
+        } catch (Exception $e) {
             $this->success = false;
+            $this->errorMessage = $e->getMessage();
+            $this->errorClass = get_class($e);
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid credentials',
-                    status: 401,
-                    errorCode: 'INVALID_CREDENTIALS'
+                    message: 'An error occurred during login',
+                    status: 500,
+                    errorCode: 'LOGIN_ERROR'
                 ),
-                401
+                500
             );
         }
-
-        $auth = $modelClass::where('email', $email)->first();
-
-        if ($auth === null) {
-            $this->success = false;
-
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: 'Authenticatable not found',
-                    status: 404,
-                    errorCode: 'AUTHENTICATABLE_NOT_FOUND'
-                ),
-                404
-            );
-        }
-
-        $this->authId = $auth->getKey();
-        $this->success = true;
-
-        [$tokenModel, $plainToken] = $this->nemesis->createWithPlainToken(
-            new NemesisTokenRecord(
-                name: $this->config->getTokenName(),
-                source: TokenSource::LOGIN->value,
-                metadata: new StrictDataObject([
-                    'device_type' => $this->agent->deviceType(),
-                    'platform' => $this->agent->platform(),
-                    'browser' => $this->agent->browser(),
-                    'ip' => $this->ip,
-                    'user_agent' => $this->userAgent,
-                ]),
-            ),
-            $auth
-        );
-
-        return ResponseFactory::json(
-            new AuthLoginData(
-                message: 'Login successful',
-                auth: DataObject::from($auth->nemesisFormat()),
-                token: $plainToken,
-            ),
-            200
-        );
     }
 
     /**
@@ -180,14 +230,16 @@ final class EmailLoginAction extends AbstractAction
                 modelClass: $this->modelClass,
                 email: $this->email ?? 'unknown',
             );
+
+            return;
         }
 
-        if (! $this->success && $error !== null) {
+        if (! $this->success) {
             $this->logRepository->loginFailure(
                 modelClass: $this->modelClass ?? 'unknown',
                 email: $this->email ?? 'unknown',
-                error: $error->getMessage(),
-                errorClass: get_class($error),
+                error: $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error'),
+                errorClass: $this->errorClass ?? ($error !== null ? get_class($error) : 'UnknownException'),
             );
         }
     }

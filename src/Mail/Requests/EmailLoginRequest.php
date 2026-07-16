@@ -15,6 +15,7 @@ final class EmailLoginRequest extends AbstractRequest
     {
         return [
             'model_type' => ['required', 'string'],
+            'email' => ['nullable'],
         ];
     }
 
