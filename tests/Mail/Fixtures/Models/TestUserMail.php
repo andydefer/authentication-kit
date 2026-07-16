@@ -6,19 +6,21 @@ namespace AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models;
 
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Data\TestUserMailData;
-use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Services\TestUserMailAuthenticationService;
 use AndyDefer\DomainStructures\Abstracts\AbstractData;
 use AndyDefer\LaravelNotification\Channels\DatabaseChannel;
 use AndyDefer\LaravelNotification\Channels\MailChannel;
 use AndyDefer\LaravelNotification\Collections\NotificationRouteCollection;
-use AndyDefer\LaravelNotification\Contracts\NotifiableInterface;
 use AndyDefer\LaravelNotification\ValueObjects\NotificationRouteVO;
 use AndyDefer\PhpVo\ValueObjects\DateTimeVO;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
-final class TestUserMail extends Model implements MailAuthenticatable, NotifiableInterface
+final class TestUserMail extends Model implements MailAuthenticatable
 {
     use SoftDeletes;
 
@@ -43,9 +45,32 @@ final class TestUserMail extends Model implements MailAuthenticatable, Notifiabl
         'remember_token',
     ];
 
+    /**
+     * {@inheritDoc}
+     */
     public static function getMailAuthService(): MailAuthenticationInterface
     {
-        return app()->make(TestUserMailAuthenticationService::class);
+        return MailAuthenticationService::for(TestUserMail::class);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public static function generate(array $data): Model&MailAuthenticatable
+    {
+        $validator = Validator::make($data, [
+            'name' => ['required', 'string', 'min:2', 'max:255'],
+        ]);
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
+        return self::create([
+            'name' => $data['name'],
+            'email' => strtolower($data['email']),
+            'password' => Hash::make($data['password']),
+        ]);
     }
 
     public function nemesisFormat(): AbstractData

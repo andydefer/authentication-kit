@@ -21,6 +21,7 @@ use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
 use Exception;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Handles user registration via email authentication.
@@ -39,6 +40,10 @@ final class EmailRegisterAction extends AbstractAction
     private ?string $ip = null;
 
     private ?string $userAgent = null;
+
+    private ?string $errorMessage = null;
+
+    private ?string $errorClass = null;
 
     public function __construct(
         private readonly NemesisInterface $nemesis,
@@ -109,42 +114,70 @@ final class EmailRegisterAction extends AbstractAction
             );
         }
 
-        /** @var MailAuthenticatable $modelClass */
-        $service = $modelClass::getMailAuthService();
+        try {
+            /** @var MailAuthenticatable $modelClass */
+            $service = $modelClass::getMailAuthService();
 
-        $auth = $service->register($record);
+            $auth = $service->register($record);
 
-        $this->authId = $auth->getKey();
+            $this->authId = $auth->getKey();
 
-        $token = null;
+            $token = null;
 
-        if ($record->with_token) {
-            [$tokenModel, $plainToken] = $this->nemesis->createWithPlainToken(
-                new NemesisTokenRecord(
-                    name: $this->config->getTokenName(),
-                    source: TokenSource::REGISTER->value,
-                    metadata: new StrictDataObject([
-                        'device_type' => $this->agent->deviceType(),
-                        'platform' => $this->agent->platform(),
-                        'browser' => $this->agent->browser(),
-                        'ip' => $this->ip,
-                        'user_agent' => $this->userAgent,
-                    ]),
+            if ($record->with_token) {
+                [$tokenModel, $plainToken] = $this->nemesis->createWithPlainToken(
+                    new NemesisTokenRecord(
+                        name: $this->config->getTokenName(),
+                        source: TokenSource::REGISTER->value,
+                        metadata: new StrictDataObject([
+                            'device_type' => $this->agent->deviceType(),
+                            'platform' => $this->agent->platform(),
+                            'browser' => $this->agent->browser(),
+                            'ip' => $this->ip,
+                            'user_agent' => $this->userAgent,
+                        ]),
+                    ),
+                    $auth
+                );
+
+                $token = $plainToken;
+            }
+
+            return ResponseFactory::json(
+                new AuthRegisteredData(
+                    message: 'Registration successful',
+                    auth: DataObject::from($auth->nemesisFormat()),
+                    token: $token,
                 ),
-                $auth
+                201
             );
 
-            $token = $plainToken;
-        }
+        } catch (ValidationException $e) {
+            $this->errorMessage = $e->getMessage();
+            $this->errorClass = get_class($e);
 
-        return ResponseFactory::json(
-            new AuthRegisteredData(
-                message: 'Registration successful',
-                auth: DataObject::from($auth->nemesisFormat()),
-                token: $token,
-            ),
-            201
-        );
+            return ResponseFactory::json(
+                new ErrorResponseData(
+                    message: $e->getMessage(),
+                    status: 422,
+                    errorCode: 'VALIDATION_ERROR',
+                    errors: DataObject::from($e->errors()),
+                ),
+                422
+            );
+        } catch (Exception $e) {
+            $this->errorMessage = $e->getMessage();
+            $this->errorClass = get_class($e);
+
+            return ResponseFactory::json(
+                new ErrorResponseData(
+                    message: 'An error occurred during registration',
+                    status: 500,
+                    errorCode: 'REGISTRATION_ERROR'
+                ),
+                500
+            );
+        }
     }
 
     /**
@@ -156,20 +189,20 @@ final class EmailRegisterAction extends AbstractAction
      */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
-        if ($success && $this->authId !== null) {
+        if ($this->authId !== null) {
             $this->logRepository->logRegistrationSuccess(
                 authId: $this->authId,
                 modelClass: $this->modelClass,
                 withToken: $this->withToken,
             );
+
+            return;
         }
 
-        if (! $success && $error !== null) {
-            $this->logRepository->logRegistrationFailure(
-                modelClass: $this->modelClass ?? 'unknown',
-                error: $error->getMessage(),
-                errorClass: get_class($error),
-            );
-        }
+        $this->logRepository->logRegistrationFailure(
+            modelClass: $this->modelClass ?? 'unknown',
+            error: $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error'),
+            errorClass: $this->errorClass ?? ($error !== null ? get_class($error) : 'UnknownException'),
+        );
     }
 }

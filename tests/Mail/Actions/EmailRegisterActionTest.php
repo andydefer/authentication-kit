@@ -29,6 +29,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'password' => 'Password123!',
+            'age' => 9,
             'password_confirmation' => 'Password123!',
         ];
 
@@ -85,8 +86,6 @@ final class EmailRegisterActionTest extends IntegrationTestCase
 
     public function test_register_logs_successful_registration(): void
     {
-        // ✅ Supprimé le mock
-
         $payload = [
             'model_type' => TestUserMail::class,
             'with_token' => true,
@@ -103,8 +102,6 @@ final class EmailRegisterActionTest extends IntegrationTestCase
 
     public function test_register_logs_failed_registration(): void
     {
-        // ✅ Supprimé le mock
-
         $payload = [
             'model_type' => TestUserMail::class,
             'name' => 'John Doe',

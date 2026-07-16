@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Contracts;
 
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
 use AndyDefer\PhpVo\ValueObjects\DateTimeVO;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Interface for authenticatable entities that support mail-based authentication.
@@ -28,4 +29,15 @@ interface MailAuthenticatable extends Authenticatable
      * @return DateTimeVO|null The email verification timestamp, or null if not verified
      */
     public function getEmailVerifiedAt(): ?DateTimeVO;
+
+    /**
+     * Creates a new authenticatable entity from record data.
+     *
+     * The validation (email, password, etc.) is already handled by the service.
+     * This method receives the complete raw data from the record.
+     *
+     * @param  array<string, mixed>  $data  The complete raw data from the record
+     * @return Model&Authenticatable The newly created model
+     */
+    public static function generate(array $data): Model&Authenticatable;
 }

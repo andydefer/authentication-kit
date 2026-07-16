@@ -19,6 +19,6 @@ final class ErrorResponseData extends AbstractData
         public readonly string $message,
         public readonly int $status,
         public readonly ?string $errorCode = null,
-        public readonly ?DataObject $details = null,
+        public readonly ?DataObject $errors = null,
     ) {}
 }
