@@ -17,6 +17,12 @@ use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Handles user logout by invalidating the authentication token.
+ *
+ * This action validates the provided token, finds the associated user,
+ * and performs the logout operation through the authentication service.
+ */
 final class EmailLogoutAction extends AbstractAction
 {
     private mixed $modelClass;
@@ -34,6 +40,13 @@ final class EmailLogoutAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
+    /**
+     * Prepares the action by validating the record and model class.
+     *
+     * @param  AbstractRecord  $record  The logout request record
+     *
+     * @throws \InvalidArgumentException When the record type is invalid or model doesn't exist
+     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof EmailLogoutAuthRecord) {
@@ -53,6 +66,12 @@ final class EmailLogoutAction extends AbstractAction
         }
     }
 
+    /**
+     * Processes the logout request.
+     *
+     * @param  AbstractRecord  $record  The logout request record
+     * @return ResponseFactory The HTTP response
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof EmailLogoutAuthRecord) {
@@ -74,7 +93,6 @@ final class EmailLogoutAction extends AbstractAction
 
         $plainToken = $record->token;
 
-        // ✅ Utiliser un algorithme de hachage valide
         $tokenModel = $this->nemesis->findByHash(
             hash('sha256', $plainToken)
         );
@@ -93,7 +111,6 @@ final class EmailLogoutAction extends AbstractAction
             );
         }
 
-        // 🔥 Vérifier si le token est expiré
         if ($tokenModel->isExpired()) {
             $this->success = false;
             $this->errorMessage = 'Token expired';
@@ -108,7 +125,6 @@ final class EmailLogoutAction extends AbstractAction
             );
         }
 
-        // Récupérer l'authenticatable depuis le token
         $tokenableType = $tokenModel->tokenable_type;
         $tokenableId = $tokenModel->tokenable_id;
 
@@ -142,10 +158,8 @@ final class EmailLogoutAction extends AbstractAction
             );
         }
 
-        // Récupérer le service d'authentification
         $service = $modelClass::getMailAuthService();
 
-        // Effectuer la déconnexion via le service
         try {
             $result = $service->logout($auth, $plainToken);
         } catch (Exception $e) {
@@ -186,6 +200,13 @@ final class EmailLogoutAction extends AbstractAction
         );
     }
 
+    /**
+     * Logs the logout attempt result.
+     *
+     * @param  bool  $success  Whether the operation succeeded
+     * @param  Exception|null  $error  The exception if one occurred
+     * @param  AbstractRecord  $record  The original request record
+     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->success && $this->authId !== null) {
@@ -196,7 +217,6 @@ final class EmailLogoutAction extends AbstractAction
             );
         }
 
-        // 🔥 MODIFICATION : Logger l'échec même si aucune exception n'a été levée
         if (! $this->success) {
             $errorMessage = $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error');
             $errorClass = $error !== null ? get_class($error) : 'NoException';

@@ -15,6 +15,13 @@ use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
 
+/**
+ * Handles sending a password reset link (OTP) to a user.
+ *
+ * This action sends a password reset OTP to the user's email address.
+ * For security reasons, it always returns a 200 response regardless of
+ * whether the user exists or the OTP was sent successfully.
+ */
 final class SendPasswordResetLinkAction extends AbstractAction
 {
     private ?string $email = null;
@@ -32,6 +39,12 @@ final class SendPasswordResetLinkAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
+    /**
+     * Processes the send password reset link request.
+     *
+     * @param  AbstractRecord  $record  The send password reset link request record
+     * @return ResponseFactory The HTTP response
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof SendPasswordResetLinkRecord) {
@@ -49,10 +62,8 @@ final class SendPasswordResetLinkAction extends AbstractAction
         $this->userFound = $this->authService->userExists($record->email);
 
         try {
-            // ✅ Tenter d'envoyer l'OTP
             $this->success = $this->authService->sendPasswordResetOtp($record->email);
 
-            // ✅ On retourne toujours 200 pour des raisons de sécurité
             return ResponseFactory::json(
                 new PasswordResetLinkSentData(
                     message: 'Password reset OTP sent successfully',
@@ -63,7 +74,6 @@ final class SendPasswordResetLinkAction extends AbstractAction
             );
 
         } catch (Exception $e) {
-            // ✅ Erreur système → 500
             $this->success = false;
             $this->errorMessage = $e->getMessage();
             $this->errorClass = get_class($e);
@@ -79,19 +89,21 @@ final class SendPasswordResetLinkAction extends AbstractAction
         }
     }
 
+    /**
+     * Logs the send password reset link attempt result.
+     *
+     * For security reasons, logs are only created if the user exists.
+     *
+     * @param  bool  $success  Whether the operation succeeded
+     * @param  Exception|null  $error  The exception if one occurred
+     * @param  AbstractRecord  $record  The original request record
+     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
-        if ($this->email === null) {
+        if ($this->email === null || ! $this->userFound) {
             return;
         }
 
-        // ✅ Sécurité : on ne log pas les tentatives sur des emails inexistants
-        if (! $this->userFound) {
-            return;
-        }
-
-        // ✅ Si l'utilisateur existe mais l'envoi a échoué (rate limit, email non envoyé)
-        // ✅ Ou si succès → on log
         $this->logRepository->logPasswordResetLinkSent(
             email: $this->email,
             success: $this->success,

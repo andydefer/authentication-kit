@@ -7,6 +7,12 @@ namespace AndyDefer\AuthenticationKit\Mail\Records;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 
+/**
+ * Record for email login request.
+ *
+ * Contains the model type, login credentials, and optional
+ * IP address and user agent for device tracking.
+ */
 final class EmailLoginAuthRecord extends AbstractRecord
 {
     public function __construct(

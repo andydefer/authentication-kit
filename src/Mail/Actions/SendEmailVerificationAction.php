@@ -16,6 +16,12 @@ use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Handles sending email verification OTP to a user.
+ *
+ * This action checks if the user is already verified, and if not,
+ * sends a new verification OTP via email.
+ */
 final class SendEmailVerificationAction extends AbstractAction
 {
     private ?string $email = null;
@@ -33,21 +39,31 @@ final class SendEmailVerificationAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
+    /**
+     * Prepares the action by extracting record data.
+     *
+     * @param  AbstractRecord  $record  The send verification request record
+     *
+     * @throws \InvalidArgumentException When the record type is invalid
+     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof SendEmailVerificationRecord) {
             throw new \InvalidArgumentException('Invalid record type');
         }
 
-        $this->modelType = $record->modelType;
-
+        $this->modelType = $record->model_type;
     }
 
+    /**
+     * Processes the send verification request.
+     *
+     * @param  AbstractRecord  $record  The send verification request record
+     * @return ResponseFactory The HTTP response
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
-
         if (! $record instanceof SendEmailVerificationRecord) {
-
             return ResponseFactory::json(
                 new ErrorResponseData(
                     message: 'Invalid record type',
@@ -59,10 +75,9 @@ final class SendEmailVerificationAction extends AbstractAction
         }
 
         try {
-            $modelClass = $record->modelType;
+            $modelClass = $record->model_type;
 
             if (! class_exists($modelClass)) {
-
                 return ResponseFactory::json(
                     new ErrorResponseData(
                         message: "Model {$modelClass} does not exist",
@@ -74,10 +89,9 @@ final class SendEmailVerificationAction extends AbstractAction
             }
 
             /** @var Model $authenticatable */
-            $authenticatable = $modelClass::find($record->authId);
+            $authenticatable = $modelClass::find($record->auth_id);
 
             if ($authenticatable === null) {
-
                 return ResponseFactory::json(
                     new ErrorResponseData(
                         message: 'Authenticatable not found',
@@ -90,7 +104,6 @@ final class SendEmailVerificationAction extends AbstractAction
 
             $this->email = $authenticatable->email ?? null;
 
-            // ✅ Vérifier si déjà vérifié
             $isVerified = $this->authService->isEmailVerified($authenticatable);
 
             if ($isVerified) {
@@ -106,8 +119,6 @@ final class SendEmailVerificationAction extends AbstractAction
                     200
                 );
             }
-
-            // ✅ Envoyer l'OTP de vérification d'email
 
             $sent = $this->authService->sendEmailVerificationOtp($authenticatable);
 
@@ -152,11 +163,16 @@ final class SendEmailVerificationAction extends AbstractAction
         }
     }
 
+    /**
+     * Logs the send verification attempt result.
+     *
+     * @param  bool  $success  Whether the operation succeeded
+     * @param  Exception|null  $error  The exception if one occurred
+     * @param  AbstractRecord  $record  The original request record
+     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
-
         if ($this->email === null) {
-
             return;
         }
 
@@ -180,30 +196,30 @@ final class SendEmailVerificationAction extends AbstractAction
         );
     }
 
+    /**
+     * Determines if the user was already verified before this request.
+     *
+     * @param  AbstractRecord  $record  The request record
+     * @return bool True if the user was already verified
+     */
     private function wasAlreadyVerified(AbstractRecord $record): bool
     {
-
         if (! $record instanceof SendEmailVerificationRecord) {
-
             return false;
         }
 
-        $modelClass = $record->modelType;
+        $modelClass = $record->model_type;
 
         if (! class_exists($modelClass)) {
-
             return false;
         }
 
-        $authenticatable = $modelClass::find($record->authId);
+        $authenticatable = $modelClass::find($record->auth_id);
 
         if ($authenticatable === null) {
-
             return false;
         }
 
-        $isVerified = $this->authService->isEmailVerified($authenticatable);
-
-        return $isVerified;
+        return $this->authService->isEmailVerified($authenticatable);
     }
 }

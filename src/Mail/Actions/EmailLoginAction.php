@@ -23,6 +23,12 @@ use AndyDefer\Nemesis\Records\NemesisTokenRecord;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Handles email-based user login authentication.
+ *
+ * This action validates user credentials, creates an authentication token
+ * upon successful login, and logs the authentication attempt.
+ */
 final class EmailLoginAction extends AbstractAction
 {
     private mixed $modelClass;
@@ -45,6 +51,13 @@ final class EmailLoginAction extends AbstractAction
 
     ) {}
 
+    /**
+     * Prepares the action by extracting record data.
+     *
+     * @param  AbstractRecord  $record  The login request record
+     *
+     * @throws \InvalidArgumentException When the record type is invalid
+     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof EmailLoginAuthRecord) {
@@ -56,6 +69,14 @@ final class EmailLoginAction extends AbstractAction
         $this->userAgent = $record->user_agent;
     }
 
+    /**
+     * Processes the login request.
+     *
+     * @param  AbstractRecord  $record  The login request record
+     * @return ResponseFactory The HTTP response
+     *
+     * @throws \InvalidArgumentException When the record type is invalid
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof EmailLoginAuthRecord) {
@@ -119,7 +140,6 @@ final class EmailLoginAction extends AbstractAction
         $this->authId = $auth->getKey();
         $this->success = true;
 
-        // ✅ Utilisation de l'ip et user_agent du record
         [$tokenModel, $plainToken] = $this->nemesis->createWithPlainToken(
             new NemesisTokenRecord(
                 name: $this->config->getTokenName(),
@@ -145,6 +165,13 @@ final class EmailLoginAction extends AbstractAction
         );
     }
 
+    /**
+     * Logs the login attempt result.
+     *
+     * @param  bool  $success  Whether the operation succeeded
+     * @param  Exception|null  $error  The exception if one occurred
+     * @param  AbstractRecord  $record  The original request record
+     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->success && $this->authId !== null) {

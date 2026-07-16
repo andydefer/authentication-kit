@@ -6,6 +6,13 @@ namespace AndyDefer\AuthenticationKit\Mail\Datas;
 
 use AndyDefer\DomainStructures\Abstracts\AbstractData;
 
+/**
+ * Response data for sent email verification.
+ *
+ * Contains the verification message, the email address,
+ * the timestamp of the sent request, and a flag indicating
+ * if the email was already verified.
+ */
 final class EmailVerificationSentData extends AbstractData
 {
     public function __construct(

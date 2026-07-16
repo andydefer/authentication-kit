@@ -21,8 +21,8 @@ final class SendEmailVerificationRequest extends AbstractRequest
     public function getRecord(): AbstractRecord
     {
         return SendEmailVerificationRecord::from([
-            'modelType' => $this->input('model_type'),
-            'authId' => $this->input('auth_id'),
+            'model_type' => $this->input('model_type'),
+            'auth_id' => $this->input('auth_id'),
         ]);
     }
 

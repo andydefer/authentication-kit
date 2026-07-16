@@ -16,6 +16,12 @@ use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Handles resending email verification OTP to a user.
+ *
+ * This action checks if the user is already verified, and if not,
+ * resends a new verification OTP via email.
+ */
 final class ResendEmailVerificationAction extends AbstractAction
 {
     private ?string $email = null;
@@ -33,15 +39,28 @@ final class ResendEmailVerificationAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
+    /**
+     * Prepares the action by extracting record data.
+     *
+     * @param  AbstractRecord  $record  The resend verification request record
+     *
+     * @throws \InvalidArgumentException When the record type is invalid
+     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof ResendEmailVerificationRecord) {
             throw new \InvalidArgumentException('Invalid record type');
         }
 
-        $this->modelType = $record->modelType;
+        $this->modelType = $record->model_type;
     }
 
+    /**
+     * Processes the resend verification request.
+     *
+     * @param  AbstractRecord  $record  The resend verification request record
+     * @return ResponseFactory The HTTP response
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof ResendEmailVerificationRecord) {
@@ -56,7 +75,7 @@ final class ResendEmailVerificationAction extends AbstractAction
         }
 
         try {
-            $modelClass = $record->modelType;
+            $modelClass = $record->model_type;
 
             if (! class_exists($modelClass)) {
                 return ResponseFactory::json(
@@ -70,7 +89,7 @@ final class ResendEmailVerificationAction extends AbstractAction
             }
 
             /** @var Model $authenticatable */
-            $authenticatable = $modelClass::find($record->authId);
+            $authenticatable = $modelClass::find($record->auth_id);
 
             if ($authenticatable === null) {
                 return ResponseFactory::json(
@@ -85,7 +104,6 @@ final class ResendEmailVerificationAction extends AbstractAction
 
             $this->email = $authenticatable->email ?? null;
 
-            // ✅ Vérifier si déjà vérifié
             if ($this->authService->isEmailVerified($authenticatable)) {
                 $this->success = true;
 
@@ -143,6 +161,13 @@ final class ResendEmailVerificationAction extends AbstractAction
         }
     }
 
+    /**
+     * Logs the resend verification attempt result.
+     *
+     * @param  bool  $success  Whether the operation succeeded
+     * @param  Exception|null  $error  The exception if one occurred
+     * @param  AbstractRecord  $record  The original request record
+     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->email === null) {
@@ -150,7 +175,6 @@ final class ResendEmailVerificationAction extends AbstractAction
         }
 
         if ($this->success) {
-
             $this->logRepository->logVerificationSuccess(
                 email: $this->email,
                 modelClass: $this->modelType,
@@ -168,19 +192,25 @@ final class ResendEmailVerificationAction extends AbstractAction
         );
     }
 
+    /**
+     * Determines if the user was already verified before this request.
+     *
+     * @param  AbstractRecord  $record  The request record
+     * @return bool True if the user was already verified
+     */
     private function wasAlreadyVerified(AbstractRecord $record): bool
     {
         if (! $record instanceof ResendEmailVerificationRecord) {
             return false;
         }
 
-        $modelClass = $record->modelType;
+        $modelClass = $record->model_type;
 
         if (! class_exists($modelClass)) {
             return false;
         }
 
-        $authenticatable = $modelClass::find($record->authId);
+        $authenticatable = $modelClass::find($record->auth_id);
 
         return $authenticatable !== null && $this->authService->isEmailVerified($authenticatable);
     }

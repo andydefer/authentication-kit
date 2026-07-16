@@ -6,6 +6,11 @@ namespace AndyDefer\AuthenticationKit\Mail\Records;
 
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 
+/**
+ * Record for sending password reset link request.
+ *
+ * Contains the email address to send the reset link to.
+ */
 final class SendPasswordResetLinkRecord extends AbstractRecord
 {
     public function __construct(

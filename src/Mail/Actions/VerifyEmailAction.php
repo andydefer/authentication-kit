@@ -18,6 +18,12 @@ use Exception;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * Handles email verification using an OTP.
+ *
+ * This action validates the OTP, marks the user's email as verified,
+ * and logs the verification attempt.
+ */
 final class VerifyEmailAction extends AbstractAction
 {
     private ?string $email = null;
@@ -39,6 +45,12 @@ final class VerifyEmailAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
+    /**
+     * Processes the verify email request.
+     *
+     * @param  AbstractRecord  $record  The verify email request record
+     * @return ResponseFactory The HTTP response
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof VerifyEmailRecord) {
@@ -52,16 +64,13 @@ final class VerifyEmailAction extends AbstractAction
             );
         }
 
-        // ✅ Conserver l'email original pour la réponse
         $this->originalEmail = $record->email;
         $this->email = trim($record->email);
         $this->modelClass = $record->model_type;
 
         try {
-            // ✅ Normaliser l'email pour la recherche (lowercase + trim)
             $normalizedEmail = strtolower(trim($record->email));
 
-            // ✅ Vérifier si l'utilisateur existe (avec soft deletes si présent)
             /** @var MailAuthenticatable&Model|null $authenticatable */
             $authenticatable = $this->modelClass::withTrashed()
                 ->where('email', $normalizedEmail)
@@ -82,7 +91,6 @@ final class VerifyEmailAction extends AbstractAction
                 );
             }
 
-            // ✅ Vérifier si l'utilisateur est soft deleted
             $usesSoftDeletes = in_array(SoftDeletes::class, class_uses($authenticatable), true);
 
             if ($usesSoftDeletes && $authenticatable->trashed()) {
@@ -100,7 +108,6 @@ final class VerifyEmailAction extends AbstractAction
                 );
             }
 
-            // ✅ Vérifier si déjà vérifié en utilisant le getter
             $emailVerifiedAt = $authenticatable->getEmailVerifiedAt();
 
             if ($emailVerifiedAt !== null) {
@@ -110,7 +117,7 @@ final class VerifyEmailAction extends AbstractAction
                 return ResponseFactory::json(
                     new EmailVerifiedData(
                         message: 'Email already verified',
-                        email: $this->originalEmail,  // ✅ Conserver l'original
+                        email: $this->originalEmail,
                         verifiedAt: $emailVerifiedAt->getValue(),
                         alreadyVerified: true,
                     ),
@@ -118,7 +125,6 @@ final class VerifyEmailAction extends AbstractAction
                 );
             }
 
-            // ✅ Vérifier avec l'OTP
             $verified = $this->authService->verifyEmail(
                 email: $normalizedEmail,
                 code: $record->token
@@ -142,16 +148,14 @@ final class VerifyEmailAction extends AbstractAction
             $this->success = true;
             $this->alreadyVerified = false;
 
-            // ✅ Rafraîchir l'utilisateur pour avoir la date de vérification
             $authenticatable->refresh();
 
-            // ✅ Récupérer la date de vérification via le getter
             $verifiedAt = $authenticatable->getEmailVerifiedAt();
 
             return ResponseFactory::json(
                 new EmailVerifiedData(
                     message: 'Email verified successfully',
-                    email: $this->originalEmail,  // ✅ Conserver l'original
+                    email: $this->originalEmail,
                     verifiedAt: $verifiedAt?->getValue() ?? now()->toIso8601String(),
                     alreadyVerified: false,
                 ),
@@ -163,7 +167,6 @@ final class VerifyEmailAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorClass = get_class($e);
 
-            // ✅ Logger l'erreur ici aussi
             $this->logRepository->logVerificationFailure(
                 email: $this->email,
                 modelClass: $this->modelClass,
@@ -182,6 +185,13 @@ final class VerifyEmailAction extends AbstractAction
         }
     }
 
+    /**
+     * Logs the verify email attempt result.
+     *
+     * @param  bool  $success  Whether the operation succeeded
+     * @param  Exception|null  $error  The exception if one occurred
+     * @param  AbstractRecord  $record  The original request record
+     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->email === null) {
@@ -198,7 +208,6 @@ final class VerifyEmailAction extends AbstractAction
             return;
         }
 
-        // ✅ LOGGER TOUTES LES ERREURS SANS CONDITION
         $this->logRepository->logVerificationFailure(
             email: $this->email,
             modelClass: $this->modelClass,

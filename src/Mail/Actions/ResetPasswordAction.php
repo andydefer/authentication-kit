@@ -15,6 +15,12 @@ use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
 
+/**
+ * Handles password reset using an OTP verification code.
+ *
+ * This action validates the password confirmation, verifies the OTP,
+ * and updates the user's password.
+ */
 final class ResetPasswordAction extends AbstractAction
 {
     private ?string $email = null;
@@ -30,6 +36,12 @@ final class ResetPasswordAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
+    /**
+     * Processes the password reset request.
+     *
+     * @param  AbstractRecord  $record  The reset password request record
+     * @return ResponseFactory The HTTP response
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof ResetPasswordRecord) {
@@ -43,8 +55,7 @@ final class ResetPasswordAction extends AbstractAction
             );
         }
 
-        // ✅ Vérifier que les mots de passe correspondent
-        if ($record->password !== $record->passwordConfirmation) {
+        if ($record->password !== $record->password_confirmation) {
             return ResponseFactory::json(
                 new ErrorResponseData(
                     message: 'Password confirmation does not match',
@@ -58,10 +69,9 @@ final class ResetPasswordAction extends AbstractAction
         $this->email = $record->email;
 
         try {
-            // ✅ Réinitialiser le mot de passe avec l'OTP
             $reset = $this->authService->resetPassword(
                 email: $record->email,
-                code: $record->token, // Le 'token' devient le code OTP
+                code: $record->token,
                 password: $record->password
             );
 
@@ -107,6 +117,13 @@ final class ResetPasswordAction extends AbstractAction
         }
     }
 
+    /**
+     * Logs the password reset attempt result.
+     *
+     * @param  bool  $success  Whether the operation succeeded
+     * @param  Exception|null  $error  The exception if one occurred
+     * @param  AbstractRecord  $record  The original request record
+     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->email === null) {

@@ -20,64 +20,75 @@ use AndyDefer\AuthenticationKit\Mail\Requests\SendPasswordResetLinkRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\VerifyEmailRequest;
 use Illuminate\Support\Facades\Route;
 
-// ========================================================================
-// Groupe principal : Toutes les routes nécessitent validate.mail.authenticatable
-// ========================================================================
+/*
+ * Authentication Routes for Mail-Based Authentication
+ *
+ * This route file defines all public and protected endpoints for
+ * email-based authentication flows including registration, login,
+ * email verification, and password reset.
+ *
+ * @package AndyDefer\AuthenticationKit\Mail
+ */
 
-Route::middleware(['validate.mail.authenticatable'])->group(function () {
+/*
+ * Public Authentication Routes
+ *
+ * These routes are accessible without authentication tokens.
+ * They handle user registration, login, password reset, and email verification.
+ */
+Route::middleware(['validate.mail.authenticatable'])->group(function (): void {
 
-    // ========================================================================
-    // Routes publiques (pas de token Nemesis requis)
-    // ========================================================================
-
-    // ✅ Inscription
+    // Registration
     Route::post('/register', action_route(
         EmailRegisterRequest::class,
         EmailRegisterAction::class
     ))->name('register');
 
-    // ✅ Connexion
+    // Login
     Route::post('/login', action_route(
         EmailLoginRequest::class,
         EmailLoginAction::class
     ))->name('login');
 
-    // ✅ Envoyer un OTP de réinitialisation
+    // Password reset request
     Route::post('/forgot-password', action_route(
         SendPasswordResetLinkRequest::class,
         SendPasswordResetLinkAction::class
     ))->name('password.email');
 
-    // ✅ Réinitialiser le mot de passe avec OTP
+    // Password reset confirmation
     Route::post('/reset-password', action_route(
         ResetPasswordRequest::class,
         ResetPasswordAction::class
     ))->name('password.update');
 
-    // ✅ Vérifier l'email avec OTP
+    // Email verification
     Route::post('/email/verify', action_route(
         VerifyEmailRequest::class,
         VerifyEmailAction::class
     ))->name('verification.verify');
 
-    // ========================================================================
-    // Sous-groupe : Routes authentifiées (nécessitent un token Nemesis)
-    // ========================================================================
+    /*
+     * Protected Authentication Routes
+     *
+     * These routes require a valid Nemesis authentication token.
+     * They handle logout and email verification OTP operations.
+     */
+    Route::middleware(['nemesis.token'])->group(function (): void {
 
-    Route::middleware(['nemesis.token'])->group(function () {
-        // ✅ Déconnexion
+        // Logout
         Route::post('/logout', action_route(
             EmailLogoutRequest::class,
             EmailLogoutAction::class
         ))->name('logout');
 
-        // ✅ Envoyer un OTP de vérification d'email
+        // Send email verification OTP
         Route::post('/email/verification', action_route(
             SendEmailVerificationRequest::class,
             SendEmailVerificationAction::class
         ))->name('verification.send');
 
-        // ✅ Renvoyer un OTP de vérification d'email
+        // Resend email verification OTP
         Route::post('/email/resend', action_route(
             ResendEmailVerificationRequest::class,
             ResendEmailVerificationAction::class

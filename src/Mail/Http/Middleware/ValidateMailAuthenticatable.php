@@ -11,8 +11,21 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Middleware that validates the 'model_type' field in incoming requests.
+ *
+ * Ensures that the provided model type exists and implements the
+ * MailAuthenticatable interface before allowing the request to proceed.
+ */
 final class ValidateMailAuthenticatable
 {
+    /**
+     * Handles the incoming request and validates the model type.
+     *
+     * @param  Request  $request  The incoming HTTP request
+     * @param  Closure  $next  The next middleware or controller
+     * @return Response The HTTP response
+     */
     public function handle(Request $request, Closure $next): Response
     {
         $modelType = $request->input('model_type');
