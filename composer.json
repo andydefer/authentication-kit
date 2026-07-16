@@ -11,10 +11,10 @@
     ],
     "require": {
         "php": "^8.1",
-        "andydefer/directive-forge": "^2.9.16",
+        "andydefer/directive-forge": "^2.9.17",
         "jenssegers/agent": "^2.6",
-        "andydefer/laravel-nemesis": "^1.9.9",
-        "andydefer/laravel-otp": "^1.0.9",
+        "andydefer/laravel-nemesis": "^1.9.10",
+        "andydefer/laravel-otp": "^1.0.10",
         "andydefer/laravel-notification": "^1.1.8"
     },
     "require-dev": {
