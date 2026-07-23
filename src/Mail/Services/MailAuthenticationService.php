@@ -66,16 +66,16 @@ class MailAuthenticationService implements MailAuthenticationInterface
      * @template U of Model&MailAuthenticatable
      *
      * @param  class-string<U>  $modelClass
-     * @return self<U>
+     * @return static<U>
      */
-    public static function for(string $modelClass): self
+    public static function for(string $modelClass): static
     {
         $nemesis = app(NemesisInterface::class);
         $otpService = app(OtpService::class);
         $logRepository = app(LogRepositoryInterface::class);
         $config = app(AuthenticationKitConfigInterface::class);
 
-        return new self($modelClass, $nemesis, $otpService, $logRepository, $config);
+        return new static($modelClass, $nemesis, $otpService, $logRepository, $config);
     }
 
     // ========================================================================
