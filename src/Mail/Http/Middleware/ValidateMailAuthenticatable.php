@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Mail\Http\Middleware;
 
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
+use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,6 +64,11 @@ final class ValidateMailAuthenticatable
                 500
             );
         }
+
+        app()->bind(MailAuthenticationInterface::class, function ($app) use ($modelType) {
+
+            return MailAuthenticationService::for($modelType);
+        });
 
         return $next($request);
     }

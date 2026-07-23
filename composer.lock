@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6f77d1e771aa5978ab96de4b5f67d904",
+    "content-hash": "d971c464f123f03196150c7b5dbd08c1",
     "packages": [
         {
             "name": "andydefer/algo-kit",
@@ -113,16 +113,16 @@
         },
         {
             "name": "andydefer/directive-forge",
-            "version": "v2.10.0",
+            "version": "v2.13.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/directive-forge.git",
-                "reference": "c1dbf00da53309517fd506b1afa84f36548b2422"
+                "reference": "9b44d426f0be37e908813991669c67d4c3f28743"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/directive-forge/zipball/c1dbf00da53309517fd506b1afa84f36548b2422",
-                "reference": "c1dbf00da53309517fd506b1afa84f36548b2422",
+                "url": "https://api.github.com/repos/andydefer/directive-forge/zipball/9b44d426f0be37e908813991669c67d4c3f28743",
+                "reference": "9b44d426f0be37e908813991669c67d4c3f28743",
                 "shasum": ""
             },
             "require": {
@@ -167,9 +167,9 @@
             "description": "Code generation directives for Laravel - forge directives, actions, tasks, repositories, records and typed collections etc...",
             "support": {
                 "issues": "https://github.com/andydefer/directive-forge/issues",
-                "source": "https://github.com/andydefer/directive-forge/tree/v2.10.0"
+                "source": "https://github.com/andydefer/directive-forge/tree/v2.13.0"
             },
-            "time": "2026-07-23T04:35:31+00:00"
+            "time": "2026-07-23T11:52:53+00:00"
         },
         {
             "name": "andydefer/domain-structures",
