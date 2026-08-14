@@ -8,6 +8,8 @@ use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Enums\TokenSource;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
@@ -82,11 +84,11 @@ final class EmailRegisterAction extends AbstractAction
         if (! $record instanceof EmailRegisterAuthRecord) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid record type',
-                    status: 500,
-                    errorCode: 'INVALID_RECORD_TYPE'
+                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
+                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
                 ),
-                500
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
             );
         }
 
@@ -95,22 +97,22 @@ final class EmailRegisterAction extends AbstractAction
         if (! class_exists($modelClass)) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: "Model {$modelClass} does not exist",
-                    status: 500,
-                    errorCode: 'MODEL_NOT_FOUND'
+                    message: ErrorCode::MODEL_NOT_FOUND->message(),
+                    status: ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode(),
+                    errorCode: ErrorCode::MODEL_NOT_FOUND->value
                 ),
-                500
+                ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode()
             );
         }
 
         if (! in_array(MailAuthenticatable::class, class_implements($modelClass) ?: [], true)) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: "Model {$modelClass} must implement ".MailAuthenticatable::class,
-                    status: 500,
-                    errorCode: 'INVALID_MODEL'
+                    message: ErrorCode::INVALID_MODEL->message(),
+                    status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_MODEL->value
                 ),
-                500
+                ErrorCode::INVALID_MODEL->getHttpStatusCode()
             );
         }
 
@@ -158,12 +160,12 @@ final class EmailRegisterAction extends AbstractAction
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: $e->getMessage(),
-                    status: 422,
-                    errorCode: 'VALIDATION_ERROR',
+                    message: ErrorCode::VALIDATION_ERROR->message(),
+                    status: ErrorCode::VALIDATION_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::VALIDATION_ERROR->value,
                     errors: DataObject::from($e->errors()),
                 ),
-                422
+                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()
             );
         } catch (Exception $e) {
             $this->errorMessage = $e->getMessage();
@@ -171,11 +173,11 @@ final class EmailRegisterAction extends AbstractAction
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'An error occurred during registration',
-                    status: 500,
-                    errorCode: 'REGISTRATION_ERROR'
+                    message: ErrorCode::REGISTRATION_ERROR->message(),
+                    status: ErrorCode::REGISTRATION_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::REGISTRATION_ERROR->value
                 ),
-                500
+                ErrorCode::REGISTRATION_ERROR->getHttpStatusCode()
             );
         }
     }
@@ -199,10 +201,13 @@ final class EmailRegisterAction extends AbstractAction
             return;
         }
 
+        $errorType = $this->errorType ?? ErrorType::VALIDATION_ERROR;
+        $errorMessage = $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error');
+
         $this->logRepository->logRegistrationFailure(
             modelClass: $this->modelClass ?? 'unknown',
-            error: $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error'),
-            errorClass: $this->errorClass ?? ($error !== null ? get_class($error) : 'UnknownException'),
+            error: $errorMessage,
+            errorType: $errorType,
         );
     }
 }

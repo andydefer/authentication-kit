@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use AndyDefer\Actions\Http\Requests\EmptyRequest;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
+use AndyDefer\AuthenticationKit\Mail\Actions\GetCurrentUserAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\ResendEmailVerificationAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\ResetPasswordAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendEmailVerificationAction;
@@ -37,7 +39,6 @@ use Illuminate\Support\Facades\Route;
  * They handle user registration, login, password reset, and email verification.
  */
 Route::middleware(['validate.mail.authenticatable'])->group(function (): void {
-
     // Registration
     Route::post('/register', action_route(
         EmailRegisterRequest::class,
@@ -93,5 +94,13 @@ Route::middleware(['validate.mail.authenticatable'])->group(function (): void {
             ResendEmailVerificationRequest::class,
             ResendEmailVerificationAction::class
         ))->name('verification.resend');
+
     });
+
 });
+
+// ✅ Get current authenticated user (no middleware, we handle it ourselves)
+Route::post('/me', action_route(
+    EmptyRequest::class,
+    GetCurrentUserAction::class
+))->name('me');

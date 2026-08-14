@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
@@ -50,11 +51,11 @@ final class SendPasswordResetLinkAction extends AbstractAction
         if (! $record instanceof SendPasswordResetLinkRecord) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid record type',
-                    status: 500,
-                    errorCode: 'INVALID_RECORD_TYPE'
+                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
+                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
                 ),
-                500
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
             );
         }
 
@@ -80,11 +81,11 @@ final class SendPasswordResetLinkAction extends AbstractAction
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'An error occurred while sending the reset OTP',
-                    status: 500,
-                    errorCode: 'RESET_LINK_ERROR'
+                    message: ErrorCode::RESET_LINK_ERROR->message(),
+                    status: ErrorCode::RESET_LINK_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::RESET_LINK_ERROR->value
                 ),
-                500
+                ErrorCode::RESET_LINK_ERROR->getHttpStatusCode()
             );
         }
     }
@@ -104,11 +105,14 @@ final class SendPasswordResetLinkAction extends AbstractAction
             return;
         }
 
+        $errorType = $this->errorType ?? null;
+        $errorMessage = $this->success ? null : ($this->errorMessage ?? 'Unknown error');
+
         $this->logRepository->logPasswordResetLinkSent(
             email: $this->email,
             success: $this->success,
-            error: $this->success ? null : ($this->errorMessage ?? 'Unknown error'),
-            errorClass: $this->success ? null : ($this->errorClass ?? 'UnknownException'),
+            error: $errorMessage,
+            errorType: $errorType,
         );
     }
 }

@@ -1,8 +1,12 @@
 <?php
 
+// src/Mail/Contracts/Repositories/LogRepositoryInterface.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Contracts\Repositories;
+
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 
 /**
  * Interface for authentication log repository.
@@ -30,12 +34,12 @@ interface LogRepositoryInterface
      *
      * @param  string  $modelClass  The class name of the authenticatable model
      * @param  string  $error  The error message
-     * @param  string  $errorClass  The class name of the exception thrown
+     * @param  ErrorType  $errorType  The type of error that occurred
      */
     public function logRegistrationFailure(
         string $modelClass,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void;
 
     /**
@@ -57,13 +61,13 @@ interface LogRepositoryInterface
      * @param  string  $modelClass  The class name of the authenticatable model
      * @param  string  $email  The email used for login attempt
      * @param  string  $error  The error message
-     * @param  string  $errorClass  The class name of the exception thrown
+     * @param  ErrorType  $errorType  The type of error that occurred
      */
     public function loginFailure(
         string $modelClass,
         string $email,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void;
 
     /**
@@ -85,13 +89,13 @@ interface LogRepositoryInterface
      * @param  string  $modelClass  The class name of the authenticatable model
      * @param  string  $email  The email of the user who attempted to logout
      * @param  string  $error  The error message
-     * @param  string  $errorClass  The class name of the exception thrown
+     * @param  ErrorType  $errorType  The type of error that occurred
      */
     public function logoutFailure(
         string $modelClass,
         string $email,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void;
 
     /**
@@ -100,13 +104,13 @@ interface LogRepositoryInterface
      * @param  string  $email  The email address where the reset link was sent
      * @param  bool  $success  Whether the reset link was sent successfully
      * @param  string|null  $error  The error message if failed
-     * @param  string|null  $errorClass  The class name of the exception if failed
+     * @param  ErrorType|null  $errorType  The type of error if failed
      */
     public function logPasswordResetLinkSent(
         string $email,
         bool $success,
         ?string $error = null,
-        ?string $errorClass = null,
+        ?ErrorType $errorType = null,
     ): void;
 
     /**
@@ -123,12 +127,12 @@ interface LogRepositoryInterface
      *
      * @param  string  $email  The email address that failed to reset password
      * @param  string  $error  The error message
-     * @param  string  $errorClass  The class name of the exception thrown
+     * @param  ErrorType  $errorType  The type of error that occurred
      */
     public function logPasswordResetFailure(
         string $email,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void;
 
     /**
@@ -150,12 +154,12 @@ interface LogRepositoryInterface
      * @param  string  $email  The email address that failed verification
      * @param  string  $modelClass  The class name of the authenticatable model
      * @param  string  $error  The error message
-     * @param  string  $errorClass  The class name of the exception thrown
+     * @param  ErrorType  $errorType  The type of error that occurred
      */
     public function logVerificationFailure(
         string $email,
         string $modelClass,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void;
 }

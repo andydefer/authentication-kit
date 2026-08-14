@@ -2,435 +2,463 @@
 
 ## Description
 
-Action qui gère l'inscription d'un nouvel utilisateur via email. Crée un compte, génère optionnellement un token d'authentification, et journalise la tentative.
+Action d'inscription qui crée un nouveau compte utilisateur via authentification par email. Elle gère la validation des données, la création du compte, la génération optionnelle d'un token d'authentification, et la journalisation de l'événement.
 
-## Endpoint
+## Hiérarchie / Implémentations
 
 ```
-POST /register
+AbstractAction
+    └── EmailRegisterAction [final]
 ```
 
-## Définition de la route
+## Rôle principal
 
-```php
-Route::post('/register', action_route(
-    EmailRegisterRequest::class,
-    EmailRegisterAction::class
-))->name('register');
-```
+Cette action est le **point d'entrée principal** pour l'inscription des utilisateurs. Elle orchestre :
 
-## Middleware
+1. La validation du modèle et de l'interface `MailAuthenticatable`
+2. La délégation à `MailAuthenticationService` pour la création du compte
+3. La génération optionnelle d'un token d'authentification (avec métadonnées)
+4. Le stockage automatique du token dans le cookie (si configuré)
+5. La journalisation du succès ou de l'échec
+6. La gestion des erreurs avec des codes standardisés
 
-| Middleware | Rôle |
+## Dépendances
+
+| Dépendance | Rôle |
 |------------|------|
-| `validate.mail.authenticatable` | Valide que le `model_type` existe et implémente `MailAuthenticatable` |
+| `NemesisInterface` | Création des tokens d'authentification |
+| `LogRepositoryInterface` | Journalisation des événements |
+| `AgentInterface` | Détection des métadonnées du client |
+| `AuthenticationKitConfigInterface` | Configuration (nom du token, etc.) |
 
----
+## API / Méthodes publiques
 
-## Structure de la requête
+### `handle(AbstractRecord $record): ResponseFactory`
 
-### Headers
+La méthode principale qui traite la requête d'inscription.
 
-| Header | Valeur | Requis |
-|--------|--------|--------|
-| `Content-Type` | `application/json` | ✅ Oui |
-| `Accept` | `application/json` | ✅ Oui |
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$record` | `EmailRegisterAuthRecord` | Record contenant les données d'inscription |
 
-### Body (JSON)
+**Retourne :** `ResponseFactory` - Réponse HTTP :
+- Succès : `AuthRegisteredData` avec message, données utilisateur et token optionnel
+- Échec : `ErrorResponseData` avec code d'erreur et message
 
-| Champ | Type | Requis | Description |
-|-------|------|--------|-------------|
-| `model_type` | `string` | ✅ Oui | FQCN du modèle (ex: `App\\Models\\User`) |
-| `with_token` | `boolean` | ❌ Non | Générer un token (défaut: `false`) |
-| `*` | `mixed` | ❌ Non | Tous les autres champs sont passés au service et au modèle |
+**Exceptions :** Aucune exception n'est levée directement - toutes les erreurs retournent des réponses JSON structurées.
 
-**Note importante :** La Request ne valide que `model_type` et `with_token`. Les autres champs (`name`, `email`, `password`, `password_confirmation`, `age`, `sex`, etc.) sont passés directement au service via `data` et sont validés par le service ou le modèle.
+### `before(AbstractRecord $record): void`
 
-### Exemple de requête
+Prépare l'action en extrayant les données du record.
 
-```json
-{
-    "model_type": "App\\Models\\User",
-    "with_token": true,
-    "name": "John Doe",
-    "email": "john@example.com",
-    "password": "Password123!",
-    "password_confirmation": "Password123!",
-    "age": 30,
-    "sex": "male",
-    "phone": "+1234567890"
-}
-```
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$record` | `EmailRegisterAuthRecord` | Record contenant les données de la requête |
 
----
+**Exceptions :** `InvalidArgumentException` si le record n'est pas du type attendu
 
-## Structure de la réponse
+### `after(bool $success, ?Exception $error, AbstractRecord $record): void`
 
-### Succès - Sans token (201 Created)
+Journalise le résultat de la tentative d'inscription.
 
-```json
-{
-    "message": "Registration successful",
-    "auth": {
-        "id": 1,
-        "name": "John Doe",
-        "email": "john@example.com",
-        "emailVerifiedAt": null,
-        "createdAt": "2024-01-01T10:00:00+00:00",
-        "updatedAt": "2024-01-01T10:00:00+00:00"
-    }
-}
-```
-
-### Succès - Avec token (201 Created)
-
-```json
-{
-    "message": "Registration successful",
-    "auth": {
-        "id": 1,
-        "name": "John Doe",
-        "email": "john@example.com",
-        "emailVerifiedAt": null,
-        "createdAt": "2024-01-01T10:00:00+00:00",
-        "updatedAt": "2024-01-01T10:00:00+00:00"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-}
-```
-
-### Erreur - Validation (422 Unprocessable Entity)
-
-```json
-{
-    "message": "The name field is required. (and 1 more error)",
-    "status": 422,
-    "errorCode": "VALIDATION_ERROR",
-    "errors": {
-        "name": [
-            "The name field is required."
-        ],
-        "email": [
-            "The email has already been taken."
-        ]
-    }
-}
-```
-
-### Erreur - Model invalide (500 Internal Server Error)
-
-```json
-{
-    "message": "Model NonExistentClass does not exist",
-    "status": 500,
-    "errorCode": "MODEL_NOT_FOUND"
-}
-```
-
----
-
-## Codes d'erreur
-
-| Code | Description |
-|------|-------------|
-| `VALIDATION_ERROR` | Erreur de validation des données (service ou modèle) |
-| `MODEL_NOT_FOUND` | Le modèle spécifié n'existe pas |
-| `INVALID_MODEL` | Le modèle n'implémente pas `MailAuthenticatable` |
-| `MODEL_TYPE_REQUIRED` | Le champ `model_type` est manquant |
-| `REGISTRATION_ERROR` | Erreur générique lors de l'inscription |
-
----
-
-## Exemples d'appel
-
-### Exemple 1 : Laravel HTTP Client
-
-```php
-<?php
-
-declare(strict_types=1);
-
-use Illuminate\Support\Facades\Http;
-
-$response = Http::post('http://localhost/api/register', [
-    'model_type' => 'App\\Models\\User',
-    'with_token' => true,
-    'name' => 'John Doe',
-    'email' => 'john@example.com',
-    'password' => 'Password123!',
-    'password_confirmation' => 'Password123!',
-]);
-
-if ($response->successful()) {
-    $data = $response->json();
-    $token = $data['token'] ?? null;
-    $user = $data['auth'];
-    
-    // Stocker le token
-    if ($token) {
-        session(['auth_token' => $token]);
-    }
-}
-```
-
-### Exemple 2 : Application React (JavaScript)
-
-```javascript
-const register = async (userData) => {
-    try {
-        const response = await fetch('http://localhost/api/register', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
-            body: JSON.stringify({
-                model_type: 'App\\Models\\User',
-                with_token: true,
-                ...userData,
-            }),
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            // Succès
-            if (data.token) {
-                localStorage.setItem('auth_token', data.token);
-            }
-            return { success: true, user: data.auth, token: data.token };
-        } else {
-            // Erreur
-            return { success: false, error: data };
-        }
-    } catch (error) {
-        return { success: false, error: error.message };
-    }
-};
-
-// Utilisation
-register({
-    name: 'John Doe',
-    email: 'john@example.com',
-    password: 'Password123!',
-    password_confirmation: 'Password123!',
-    age: 30,
-    sex: 'male',
-});
-```
-
-### Exemple 3 : Application Kotlin (Android)
-
-```kotlin
-import retrofit2.http.*
-
-interface ApiService {
-    @POST("api/register")
-    suspend fun register(
-        @Body request: RegisterRequest
-    ): Response<RegisterResponse>
-}
-
-data class RegisterRequest(
-    val model_type: String = "App\\Models\\User",
-    val with_token: Boolean = true,
-    val name: String,
-    val email: String,
-    val password: String,
-    @SerializedName("password_confirmation")
-    val passwordConfirmation: String,
-    val age: Int? = null,
-    val sex: String? = null,
-    val phone: String? = null
-)
-
-data class RegisterResponse(
-    val message: String,
-    val auth: UserData,
-    val token: String? = null
-)
-
-data class UserData(
-    val id: Int,
-    val name: String,
-    val email: String,
-    val emailVerifiedAt: String?,
-    val createdAt: String,
-    val updatedAt: String
-)
-
-// Utilisation dans un ViewModel
-class RegisterViewModel(
-    private val apiService: ApiService,
-    private val sessionManager: SessionManager
-) : ViewModel() {
-
-    private val _registerState = MutableStateFlow<RegisterState>(RegisterState.Idle)
-    val registerState: StateFlow<RegisterState> = _registerState.asStateFlow()
-
-    suspend fun register(name: String, email: String, password: String, age: Int?) {
-        _registerState.value = RegisterState.Loading
-
-        try {
-            val request = RegisterRequest(
-                name = name,
-                email = email,
-                password = password,
-                passwordConfirmation = password,
-                age = age
-            )
-
-            val response = apiService.register(request)
-
-            if (response.isSuccessful) {
-                val data = response.body()
-                if (data != null) {
-                    data.token?.let { token ->
-                        sessionManager.saveToken(token)
-                    }
-                    _registerState.value = RegisterState.Success(data)
-                }
-            } else {
-                val error = response.errorBody()?.string()?.let {
-                    parseErrorResponse(it)
-                }
-                _registerState.value = RegisterState.Error(error?.message ?: "Erreur inconnue")
-            }
-        } catch (e: Exception) {
-            _registerState.value = RegisterState.Error(e.message ?: "Erreur réseau")
-        }
-    }
-
-    private fun parseErrorResponse(json: String): ErrorResponse {
-        return gson.fromJson(json, ErrorResponse::class.java)
-    }
-}
-```
-
-### Exemple 4 : Dans un test Laravel
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace Tests\Feature;
-
-use Tests\TestCase;
-use App\Models\User;
-
-class RegisterTest extends TestCase
-{
-    public function test_user_can_register(): void
-    {
-        $response = $this->postJson('/api/register', [
-            'model_type' => User::class,
-            'with_token' => true,
-            'name' => 'John Doe',
-            'email' => 'john@example.com',
-            'password' => 'Password123!',
-            'password_confirmation' => 'Password123!',
-        ]);
-
-        $response->assertStatus(201)
-            ->assertJsonStructure([
-                'message',
-                'auth' => ['id', 'name', 'email'],
-                'token',
-            ]);
-    }
-
-    public function test_register_fails_with_missing_name(): void
-    {
-        $response = $this->postJson('/api/register', [
-            'model_type' => User::class,
-            'email' => 'john@example.com',
-            'password' => 'Password123!',
-            'password_confirmation' => 'Password123!',
-        ]);
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['name']);
-    }
-}
-```
-
----
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$success` | `bool` | Indique si l'opération a réussi |
+| `$error` | `Exception|null` | L'exception si une erreur est survenue |
+| `$record` | `AbstractRecord` | Le record original de la requête |
 
 ## Flux d'exécution
 
 ```
-Requête POST /register
+Requête entrante (EmailRegisterAuthRecord)
     ↓
-Middleware validate.mail.authenticatable
-    ├── Vérifie model_type existe
-    ├── Vérifie model_type implémente MailAuthenticatable
-    └── Échec → 400/500
+1. before() - Validation du record
     ↓
-EmailRegisterRequest (Validation)
-    ├── model_type: required|string
-    ├── with_token: sometimes|boolean
-    └── Échec → 422
+2. handle() - Traitement principal
+    ├── Validation du record
+    │   └── Invalide → 500 (INVALID_RECORD_TYPE)
+    ├── Validation du modèle
+    │   ├── N'existe pas → 500 (MODEL_NOT_FOUND)
+    │   └── Interface non implémentée → 500 (INVALID_MODEL)
+    ├── Appel à MailAuthenticationService::register()
+    │   ├── ValidationException → 422 (VALIDATION_ERROR)
+    │   └── Succès → Continue
+    ├── Génération du token (si with_token = true)
+    │   └── Métadonnées : device, platform, browser, IP, user-agent
+    └── Succès → 201 (AuthRegisteredData)
     ↓
-EmailRegisterAction
-    ├── before() - Extrait les données
-    ├── handle()
-    │   ├── Vérifie model_type existe
-    │   ├── Vérifie MailAuthenticatable
-    │   ├── Appelle service->register()
-    │   │   ├── beforeRegister() [HOOK]
-    │   │   ├── Validation email/password (service)
-    │   │   ├── model::generate($data) (modèle)
-    │   │   ├── Log Registration Success
-    │   │   └── afterRegister() [HOOK]
-    │   ├── Crée le token (si with_token = true)
-    │   └── Retourne AuthRegisteredData
-    └── after() - Journalisation
-    ↓
-Réponse JSON
+3. after() - Journalisation
+    ├── Succès → logRegistrationSuccess()
+    └── Échec → logRegistrationFailure()
 ```
 
----
+## Cas d'utilisation
+
+### Cas 1 : Inscription standard (sans token)
+
+**Problème** : L'utilisateur crée un compte mais ne souhaite pas être connecté automatiquement.
+
+**Solution** : L'action crée le compte sans générer de token.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
+use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
+use AndyDefer\DomainStructures\Utils\StrictDataObject;
+use App\Models\User;
+
+// Création du record
+$record = EmailRegisterAuthRecord::from([
+    'model_type' => User::class,
+    'data' => StrictDataObject::from([
+        'name' => 'John Doe',
+        'email' => 'john@example.com',
+        'password' => 'Secret123!',
+        'password_confirmation' => 'Secret123!',
+    ]),
+    'with_token' => false, // Pas de token généré
+    'ip' => request()->ip(),
+    'user_agent' => request()->userAgent(),
+]);
+
+// Exécution de l'action
+$action = app(EmailRegisterAction::class);
+$response = $action->handle($record);
+
+// Réponse JSON
+// {
+//     "message": "Registration successful",
+//     "auth": { "id": 1, "name": "John", "email": "john@example.com" },
+//     "token": null
+// }
+```
+
+### Cas 2 : Inscription avec token et cookie
+
+**Problème** : L'utilisateur s'inscrit et doit être immédiatement connecté.
+
+**Solution** : L'action génère un token qui sera automatiquement stocké dans le cookie.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+// Configuration
+'store_token_in_cookie' => true,
+
+// Record avec with_token = true
+$record = EmailRegisterAuthRecord::from([
+    'model_type' => User::class,
+    'data' => StrictDataObject::from([
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.com',
+        'password' => 'SecurePass123!',
+        'password_confirmation' => 'SecurePass123!',
+    ]),
+    'with_token' => true, // Token généré et stocké dans cookie
+]);
+
+$response = $action->handle($record);
+
+// Réponse : token dans le body ET cookie
+// Body: { "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." }
+// Cookie: auth_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+### Cas 3 : Validation des données
+
+**Problème** : Les données soumises ne respectent pas les règles de validation.
+
+**Solution** : L'action capture `ValidationException` et retourne les erreurs.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+// Email déjà utilisé
+$record = EmailRegisterAuthRecord::from([
+    'model_type' => User::class,
+    'data' => StrictDataObject::from([
+        'name' => 'John Doe',
+        'email' => 'existing@example.com', // Déjà en base
+        'password' => 'Secret123!',
+        'password_confirmation' => 'Secret123!',
+    ]),
+]);
+
+$response = $action->handle($record);
+// 422 - "Validation error"
+// errors: { "email": ["The email has already been taken."] }
+
+// Mot de passe trop court
+$record = EmailRegisterAuthRecord::from([
+    'model_type' => User::class,
+    'data' => StrictDataObject::from([
+        'name' => 'John Doe',
+        'email' => 'john@example.com',
+        'password' => '123', // 3 caractères
+        'password_confirmation' => '123',
+    ]),
+]);
+
+$response = $action->handle($record);
+// 422 - "Validation error"
+// errors: { "password": ["The password must be at least 8 characters."] }
+```
+
+### Cas 4 : Métadonnées enrichies
+
+**Problème** : L'application doit savoir d'où vient l'inscription.
+
+**Solution** : L'action capture automatiquement les métadonnées du client.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+// La requête contient IP et User-Agent
+$record = EmailRegisterAuthRecord::from([
+    'model_type' => User::class,
+    'data' => StrictDataObject::from([...]),
+    'ip' => '192.168.1.100',
+    'user_agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0) AppleWebKit/605.1.15',
+    'with_token' => true,
+]);
+
+// Le token contient les métadonnées :
+// {
+//     "device_type": "mobile",
+//     "platform": "iOS 14",
+//     "browser": "Safari",
+//     "ip": "192.168.1.100",
+//     "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0)..."
+// }
+```
 
 ## Gestion des erreurs
 
-| Situation | Code | Message |
-|-----------|------|---------|
-| `model_type` manquant | 400 | `model_type is required` |
-| `model_type` invalide | 500 | `Model X does not exist` |
-| Modèle non compatible | 500 | `Model X must implement MailAuthenticatable` |
-| Validation (service) | 422 | Erreurs de validation (email, password) |
-| Validation (modèle) | 422 | Erreurs de validation (name, age, etc.) |
-| Erreur générique | 500 | `An error occurred during registration` |
+| Situation | Code HTTP | ErrorCode | Message |
+|-----------|-----------|-----------|---------|
+| Record invalide | 500 | `INVALID_RECORD_TYPE` | `Invalid record type` |
+| Modèle inexistant | 500 | `MODEL_NOT_FOUND` | `Model does not exist` |
+| Interface non implémentée | 500 | `INVALID_MODEL` | `Model must implement MailAuthenticatable` |
+| Erreur de validation | 422 | `VALIDATION_ERROR` | `Validation error` |
+| Erreur générique | 500 | `REGISTRATION_ERROR` | `An error occurred during registration` |
 
----
+## Validation en amont
+
+L'action **délègue** la validation à `MailAuthenticationService::register()` qui applique les règles :
+
+```php
+<?php
+
+// Règles de validation par défaut
+[
+    'email' => ['required', 'email', "unique:{$table}"],
+    'password' => ['required', 'min:8', 'confirmed'],
+];
+```
+
+Le modèle peut surcharger ces règles en redéfinissant la méthode `getValidationRules()` dans le modèle.
 
 ## Intégration
 
-### Dépendances de l'Action
+### Avec le middleware
 
-| Dépendance | Rôle |
-|------------|------|
-| `NemesisInterface` | Création du token d'authentification |
-| `LogRepositoryInterface` | Journalisation des événements |
-| `AgentInterface` | Détection du device pour le token |
-| `AuthenticationKitConfigInterface` | Configuration du nom du token |
+```php
+<?php
 
-### Appel au service
+declare(strict_types=1);
 
-L'Action appelle `MailAuthenticationService::register()` qui orchestre :
-- Validation des données (email, password)
-- Création de l'utilisateur via `model::generate()`
-- Logging des succès/échecs
-- Hooks `beforeRegister()` et `afterRegister()`
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
+use AndyDefer\AuthenticationKit\Mail\Requests\EmailRegisterRequest;
 
----
+// Le middleware validate.mail.authenticatable valide model_type
+Route::middleware(['validate.mail.authenticatable'])->post('/api/register', action_route(
+    EmailRegisterRequest::class,
+    EmailRegisterAction::class
+));
+```
+
+### Avec le service d'authentification
+
+L'action utilise `MailAuthenticationService` via la méthode statique du modèle :
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
+
+class User extends Model implements MailAuthenticatable
+{
+    // La méthode getMailAuthService() est fournie par l'interface
+    public static function getMailAuthService(): MailAuthenticationInterface
+    {
+        return MailAuthenticationService::for(self::class);
+    }
+}
+```
+
+### Avec les tests
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
+
+public function test_register_with_token_and_cookie()
+{
+    $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+    
+    $payload = [
+        'model_type' => TestUserMail::class,
+        'with_token' => true,
+        'name' => 'Test User',
+        'email' => 'test@example.com',
+        'password' => 'Password123!',
+        'password_confirmation' => 'Password123!',
+    ];
+    
+    $response = $this->postJson('/api/register', $payload);
+    
+    $response->assertStatus(201);
+    $response->assertJsonStructure(['token', 'auth']);
+    $response->assertCookie('nemesis_token');
+}
+```
+
+## Performance
+
+- **Complexité** : O(1) - requêtes DB optimisées
+- **Validation** : Laravel Validator en O(n) sur les champs
+- **Token** : Création via Nemesis en O(1)
+- **Métadonnées** : Détection via AgentInterface en O(1)
+- **Logs** : Écriture asynchrone via LogRepository
+- **Mémoire** : Allocation minimale
+
+## Compatibilité
+
+| Version | Support | Détails |
+|---------|---------|---------|
+| PHP 8.1+ | ✅ Complet | Types, énumérations |
+| PHP 8.0 | ✅ Complet | Support complet |
+| Laravel 12 | ✅ Complet | Framework supporté |
+| Laravel 13 | ✅ Complet | Framework supporté |
+| Laravel 14 | ✅ Complet | Framework supporté |
+| Laravel 15 | ✅ Complet | Framework supporté |
+
+## Exemple complet
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
+use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
+use AndyDefer\DomainStructures\Utils\StrictDataObject;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+
+class RegisterController extends Controller
+{
+    public function register(Request $request, EmailRegisterAction $action)
+    {
+        // 1. Validation des champs requis
+        $validated = $request->validate([
+            'model_type' => 'required|string',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email',
+            'password' => 'required|min:8|confirmed',
+            'with_token' => 'sometimes|boolean',
+        ]);
+
+        // 2. Construction du record
+        $record = EmailRegisterAuthRecord::from([
+            'model_type' => $validated['model_type'],
+            'data' => StrictDataObject::from([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => $validated['password'],
+                'password_confirmation' => $validated['password'] . '_confirmation_placeholder',
+            ]),
+            'with_token' => $validated['with_token'] ?? true,
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        // 3. Exécution de l'action
+        $response = $action->handle($record);
+
+        // 4. Retour de la réponse
+        return $response;
+    }
+}
+
+// Exemple d'utilisation dans une route API
+Route::post('/api/register', [RegisterController::class, 'register']);
+
+// Requête : POST /api/register
+// {
+//     "model_type": "App\\Models\\User",
+//     "name": "John Doe",
+//     "email": "john@example.com",
+//     "password": "Secret123!",
+//     "password_confirmation": "Secret123!",
+//     "with_token": true
+// }
+
+// Réponse (succès) :
+// {
+//     "message": "Registration successful",
+//     "auth": {
+//         "id": 1,
+//         "name": "John Doe",
+//         "email": "john@example.com",
+//         "emailVerifiedAt": null,
+//         "createdAt": "2026-08-14T10:00:00+00:00",
+//         "updatedAt": "2026-08-14T10:00:00+00:00"
+//     },
+//     "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+// }
+
+// Réponse (échec - validation) :
+// {
+//     "message": "Validation error",
+//     "status": 422,
+//     "errorCode": "VALIDATION_ERROR",
+//     "errors": {
+//         "email": ["The email has already been taken."]
+//     }
+// }
+
+// Réponse (échec - modèle invalide) :
+// {
+//     "message": "Model NonExistentClass must implement MailAuthenticatable",
+//     "status": 500,
+//     "errorCode": "INVALID_MODEL"
+// }
+```
 
 ## Voir aussi
 
-- `EmailLoginAction` - Connexion d'un utilisateur
-- `EmailLogoutAction` - Déconnexion d'un utilisateur
-- `SendPasswordResetLinkAction` - Envoi d'un OTP de réinitialisation
-- `MailAuthenticationService` - Service d'authentification générique
-- `EmailRegisterRequest` - Validation de la requête
-- `AuthRegisteredData` - Structure de la réponse
+- `EmailRegisterAuthRecord` - Record de données pour l'inscription
+- `AuthRegisteredData` - Réponse de succès
+- `ErrorResponseData` - Réponse d'erreur
+- `ErrorCode` - Codes d'erreur standardisés
+- `ErrorType` - Types d'erreur pour les logs
+- `MailAuthenticationService::register()` - Service sous-jacent
+- `NemesisInterface` - Gestion des tokens
+- `AgentInterface` - Détection des métadonnées client
+- `ValidateMailAuthenticatableMiddleware` - Middleware de validation

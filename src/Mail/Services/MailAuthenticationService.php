@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Services;
 
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
@@ -19,6 +20,7 @@ use AndyDefer\LaravelNotification\ValueObjects\MessageSubjectVO;
 use AndyDefer\LaravelNotification\ValueObjects\NotificationMessageVO;
 use AndyDefer\LaravelOtp\Services\OtpService;
 use AndyDefer\LaravelOtp\ValueObjects\PurposeVO;
+use AndyDefer\Nemesis\Contracts\Services\CookieTokenStorageInterface;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -48,6 +50,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         private readonly OtpService $otpService,
         private readonly LogRepositoryInterface $logRepository,
         private readonly AuthenticationKitConfigInterface $config,
+        private readonly CookieTokenStorageInterface $cookieStorage,
     ) {
         if (! class_exists($modelClass)) {
             throw new \InvalidArgumentException("Model class {$modelClass} does not exist");
@@ -74,8 +77,9 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $otpService = app(OtpService::class);
         $logRepository = app(LogRepositoryInterface::class);
         $config = app(AuthenticationKitConfigInterface::class);
+        $cookieStorage = app(CookieTokenStorageInterface::class);
 
-        return new static($modelClass, $nemesis, $otpService, $logRepository, $config);
+        return new static($modelClass, $nemesis, $otpService, $logRepository, $config, $cookieStorage);
     }
 
     // ========================================================================
@@ -101,7 +105,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
             $this->logRepository->logRegistrationFailure(
                 modelClass: $this->modelClass,
                 error: $validator->errors()->first(),
-                errorClass: ValidationException::class,
+                errorType: ErrorType::VALIDATION_ERROR,
             );
 
             throw new ValidationException($validator);
@@ -110,6 +114,25 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $modelClass = $this->modelClass;
 
         $user = $modelClass::generate($data);
+
+        // ✅ Créer le token si with_token est true
+        if ($record->with_token) {
+            $tokenRecord = NemesisTokenRecord::from([
+                'name' => 'auth-register',
+                'source' => 'register',
+                'metadata' => new StrictDataObject([
+                    'auth_id' => $user->getKey(),
+                    'email' => $user->email,
+                ]),
+            ]);
+
+            [$token, $plainToken] = $this->nemesis->createWithPlainToken($tokenRecord, $user);
+
+            // ✅ Stocker le cookie si configuré
+            if ($this->config->shouldStoreTokenInCookie()) {
+                $this->cookieStorage->store($plainToken);
+            }
+        }
 
         $this->logRepository->logRegistrationSuccess(
             authId: $user->getKey(),
@@ -138,7 +161,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 modelClass: $this->modelClass,
                 email: $email,
                 error: 'User not found',
-                errorClass: 'UserNotFoundException',
+                errorType: ErrorType::USER_NOT_FOUND,
             );
 
             return null;
@@ -149,7 +172,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 modelClass: $this->modelClass,
                 email: $email,
                 error: 'Invalid password',
-                errorClass: 'InvalidCredentialsException',
+                errorType: ErrorType::INVALID_CREDENTIALS,
             );
 
             return null;
@@ -161,16 +184,25 @@ class MailAuthenticationService implements MailAuthenticationInterface
             email: $email,
         );
 
-        $this->afterLogin($user);
-
-        return new NemesisTokenRecord(
-            name: 'auth-login',
-            source: 'login',
-            metadata: new StrictDataObject([
+        $record = NemesisTokenRecord::from([
+            'name' => 'auth-login',
+            'source' => 'login',
+            'metadata' => new StrictDataObject([
                 'auth_id' => $user->getKey(),
                 'email' => $user->email,
             ]),
-        );
+        ]);
+
+        [$token, $plainToken] = $this->nemesis->createWithPlainToken($record, $user);
+
+        if ($this->config->shouldStoreTokenInCookie()) {
+
+            $this->cookieStorage->store($plainToken);
+        }
+
+        $this->afterLogin($user);
+
+        return NemesisTokenRecord::from(action_normalizer_chain(true)->normalize($token));
     }
 
     /**
@@ -187,7 +219,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 modelClass: $this->modelClass,
                 email: $authenticatable->email ?? 'unknown',
                 error: 'Token not found',
-                errorClass: 'TokenNotFoundException',
+                errorType: ErrorType::TOKEN_NOT_FOUND,
             );
 
             return false;
@@ -202,13 +234,17 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 email: $authenticatable->email ?? 'unknown',
             );
 
+            if ($this->config->shouldStoreTokenInCookie()) {
+                $this->cookieStorage->forget();
+            }
+
             $this->afterLogout($authenticatable);
         } else {
             $this->logRepository->logoutFailure(
                 modelClass: $this->modelClass,
                 email: $authenticatable->email ?? 'unknown',
                 error: 'Failed to revoke token',
-                errorClass: 'TokenRevokeException',
+                errorType: ErrorType::TOKEN_REVOKE_FAILED,
             );
         }
 
@@ -231,7 +267,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 email: $email,
                 success: false,
                 error: 'User not found',
-                errorClass: 'UserNotFoundException',
+                errorType: ErrorType::USER_NOT_FOUND,
             );
 
             $this->afterSendPasswordResetOtp($email, false);
@@ -241,7 +277,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
         $purpose = $this->getPasswordResetPurpose();
 
-        // ✅ Utilisation de la configuration pour le rate limiting
         $rateLimitAttempts = $this->config->getPasswordResetRateLimitAttempts();
 
         if ($this->otpService->isRateLimited($user, $purpose, $rateLimitAttempts)) {
@@ -249,7 +284,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 email: $email,
                 success: false,
                 error: 'Rate limit exceeded',
-                errorClass: 'RateLimitException',
+                errorType: ErrorType::RATE_LIMIT_EXCEEDED,
             );
 
             $this->afterSendPasswordResetOtp($email, false);
@@ -290,7 +325,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
             $this->logRepository->logPasswordResetFailure(
                 email: $email,
                 error: 'User not found',
-                errorClass: 'UserNotFoundException',
+                errorType: ErrorType::USER_NOT_FOUND,
             );
 
             return false;
@@ -308,7 +343,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
             $this->logRepository->logPasswordResetFailure(
                 email: $email,
                 error: 'Invalid or expired OTP',
-                errorClass: 'InvalidOtpException',
+                errorType: ErrorType::INVALID_OTP,
             );
 
             return false;
@@ -343,7 +378,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
         $purpose = $this->getEmailVerificationPurpose();
 
-        // ✅ Utilisation de la configuration pour le rate limiting
         $rateLimitAttempts = $this->config->getEmailVerificationRateLimitAttempts();
 
         if ($this->otpService->isRateLimited($authenticatable, $purpose, $rateLimitAttempts)) {
@@ -351,7 +385,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 email: $authenticatable->email ?? 'unknown',
                 modelClass: $this->modelClass,
                 error: 'Rate limit exceeded',
-                errorClass: 'RateLimitException',
+                errorType: ErrorType::RATE_LIMIT_EXCEEDED,
             );
 
             return false;
@@ -387,7 +421,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 email: $email,
                 modelClass: $this->modelClass,
                 error: 'User not found',
-                errorClass: 'UserNotFoundException',
+                errorType: ErrorType::USER_NOT_FOUND,
             );
 
             return false;
@@ -418,7 +452,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
                 email: $email,
                 modelClass: $this->modelClass,
                 error: 'Invalid or expired OTP',
-                errorClass: 'InvalidOtpException',
+                errorType: ErrorType::INVALID_OTP,
             );
 
             return false;

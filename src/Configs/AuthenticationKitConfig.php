@@ -1,5 +1,7 @@
 <?php
 
+// src/Configs/AuthenticationKitConfig.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Configs;
@@ -14,6 +16,8 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
     private const DEFAULT_PASSWORD_RESET_RATE_LIMIT = 3;
 
     private const DEFAULT_EMAIL_VERIFICATION_RATE_LIMIT = 5;
+
+    private const DEFAULT_STORE_TOKEN_IN_COOKIE = true;
 
     public function __construct(
         private readonly ConfigRepository $config,
@@ -49,6 +53,18 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
         return (int) $this->config->get(
             'authentication-kit.email_verification_rate_limit',
             self::DEFAULT_EMAIL_VERIFICATION_RATE_LIMIT
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function shouldStoreTokenInCookie(): bool
+    {
+
+        return (bool) $this->config->get(
+            'authentication-kit.store_token_in_cookie',
+            self::DEFAULT_STORE_TOKEN_IN_COOKIE
         );
     }
 }

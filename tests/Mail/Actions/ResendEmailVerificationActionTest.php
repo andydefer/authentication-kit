@@ -22,9 +22,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        // ✅ Configuration déjà dans getEnvironmentSetUp() avec putenv()
-        // On laisse les valeurs par défaut
-
         $this->app['router']->post('/api/email/resend', action_route(
             ResendEmailVerificationRequest::class,
             ResendEmailVerificationAction::class
@@ -69,7 +66,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'alreadyVerified' => false,
         ]);
 
-        // ✅ Vérifier qu'un OTP a été créé
         $purpose = new PurposeVO(
             value: 'email_verification',
             label: 'Email Verification',
@@ -101,7 +97,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'alreadyVerified' => true,
         ]);
 
-        // ✅ Vérifier qu'aucun nouvel OTP n'a été créé
         $purpose = new PurposeVO(
             value: 'email_verification',
             label: 'Email Verification',
@@ -170,7 +165,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response->assertStatus(500);
         $response->assertJson([
             'errorCode' => 'MODEL_NOT_FOUND',
-            'message' => 'Model NonExistentClass does not exist',
+            'message' => 'Model does not exist',
         ]);
     }
 
@@ -192,10 +187,8 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
 
     public function test_resend_email_verification_returns_500_when_resend_fails(): void
     {
-        // ✅ Créer un utilisateur
         $user = $this->createUser();
 
-        // ✅ Premier envoi (OK)
         $payload = [
             'model_type' => TestUserMail::class,
             'auth_id' => $user->id,
@@ -204,19 +197,13 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response1 = $this->postJson('/api/email/resend', $payload);
         $response1->assertStatus(200);
 
-        // ✅ Second envoi (rate limit atteint)
-        // Le service retourne false → l'action retourne 500
         $response2 = $this->postJson('/api/email/resend', $payload);
 
-        // ✅ Selon la configuration du rate limit, ça peut être 200 ou 500
-        // On vérifie juste que la réponse est cohérente
         $this->assertContains($response2->status(), [200, 500]);
     }
 
     public function test_resend_email_verification_returns_500_when_exception_thrown(): void
     {
-        // ✅ Utiliser un model_type qui existe mais avec un auth_id inexistant
-        // L'action capture l'exception et retourne 500
         $payload = [
             'model_type' => 'NonExistentClass',
             'auth_id' => 1,
@@ -227,7 +214,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response->assertStatus(500);
         $response->assertJson([
             'errorCode' => 'MODEL_NOT_FOUND',
-            'message' => 'Model NonExistentClass does not exist',
+            'message' => 'Model does not exist',
         ]);
     }
 
@@ -237,10 +224,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
 
     public function test_resend_email_verification_logs_successful_resend(): void
     {
-        // ✅ Le vrai service est utilisé
-        // Les logs sont écrits dans le vrai LogRepository
-        // On vérifie juste que la requête réussit
-
         $user = $this->createUser();
 
         $payload = [
@@ -251,7 +234,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response = $this->postJson('/api/email/resend', $payload);
 
         $response->assertStatus(200);
-        // ✅ Le log est fait dans after()
     }
 
     public function test_resend_email_verification_logs_already_verified(): void
@@ -268,15 +250,12 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response = $this->postJson('/api/email/resend', $payload);
 
         $response->assertStatus(200);
-        // ✅ Le log est fait dans after()
     }
 
     public function test_resend_email_verification_logs_failure(): void
     {
-        // ✅ Créer un utilisateur
         $user = $this->createUser();
 
-        // ✅ Premier envoi
         $payload = [
             'model_type' => TestUserMail::class,
             'auth_id' => $user->id,
@@ -285,11 +264,8 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response1 = $this->postJson('/api/email/resend', $payload);
         $response1->assertStatus(200);
 
-        // ✅ Second envoi (rate limit atteint → échec)
         $response2 = $this->postJson('/api/email/resend', $payload);
 
-        // ✅ Le log est fait dans after() avec success = false
-        // On vérifie juste que la réponse est cohérente
         $this->assertContains($response2->status(), [200, 500]);
     }
 
@@ -350,7 +326,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
     {
         $user = $this->createUser();
 
-        // ✅ Simuler l'envoi initial de l'OTP
         $purpose = new PurposeVO(
             value: 'email_verification',
             label: 'Email Verification',
@@ -359,7 +334,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         );
         $this->otpService->create($user, $purpose);
 
-        // ✅ Renvoyer l'OTP
         $payload = [
             'model_type' => TestUserMail::class,
             'auth_id' => $user->id,

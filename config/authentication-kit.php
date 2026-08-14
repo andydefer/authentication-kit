@@ -1,5 +1,7 @@
 <?php
 
+// config/authentication-kit.php
+
 declare(strict_types=1);
 
 return [
@@ -34,4 +36,16 @@ return [
     |
     */
     'email_verification_rate_limit' => env('AUTH_KIT_EMAIL_VERIFICATION_RATE_LIMIT', 5),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Store Token in Cookie
+    |--------------------------------------------------------------------------
+    |
+    | Whether to automatically store the authentication token in a cookie
+    | after login. Useful for web applications with cookie-based sessions.
+    | Default: false (tokens are returned but not stored in cookies).
+    |
+    */
+    'store_token_in_cookie' => env('AUTH_KIT_STORE_TOKEN_IN_COOKIE', true),
 ];

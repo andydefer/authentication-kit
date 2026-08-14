@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
+use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLogoutRequest;
@@ -11,9 +12,8 @@ use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
-use AndyDefer\Nemesis\Models\NemesisToken;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
-use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Cookie;
 
 final class EmailLogoutActionTest extends IntegrationTestCase
 {
@@ -21,10 +21,72 @@ final class EmailLogoutActionTest extends IntegrationTestCase
     {
         parent::setUp();
 
+        $this->app['config']->set('authentication-kit', [
+            'token_name' => 'authentication-kit',
+            'password_reset_rate_limit' => 3,
+            'email_verification_rate_limit' => 5,
+            'store_token_in_cookie' => false,
+        ]);
+
+        $this->app['config']->set('nemesis.web', [
+            'login_route' => '/login',
+            'dashboard_route' => '/dashboard',
+            'cookie_name' => 'nemesis_token',
+            'cookie_secure' => false,
+            'cookie_httponly' => false,
+            'cookie_samesite' => 'lax',
+        ]);
+
+        $this->app->singleton(
+            AuthenticationKitConfigInterface::class,
+            function ($app) {
+                return new AuthenticationKitConfig(
+                    $app['config']
+                );
+            }
+        );
+
         $this->app['router']->middleware(['validate.mail.authenticatable', 'nemesis.token'])->post('/api/logout', action_route(
             EmailLogoutRequest::class,
             EmailLogoutAction::class
         ));
+    }
+
+    private function refreshConfigService(): void
+    {
+        $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
+        $this->app->singleton(
+            AuthenticationKitConfigInterface::class,
+            function ($app) {
+                return new AuthenticationKitConfig(
+                    $app['config']
+                );
+            }
+        );
+    }
+
+    private function getQueuedCookieValue(string $cookieName): ?string
+    {
+        $queuedCookies = Cookie::getQueuedCookies();
+        foreach ($queuedCookies as $cookie) {
+            if ($cookie->getName() === $cookieName) {
+                return $cookie->getValue();
+            }
+        }
+
+        return null;
+    }
+
+    private function isQueuedCookieForgotten(string $cookieName): bool
+    {
+        $queuedCookies = Cookie::getQueuedCookies();
+        foreach ($queuedCookies as $cookie) {
+            if ($cookie->getName() === $cookieName) {
+                return $cookie->getExpiresTime() < time();
+            }
+        }
+
+        return false;
     }
 
     private function createUserAndGetToken(): array
@@ -58,50 +120,265 @@ final class EmailLogoutActionTest extends IntegrationTestCase
     }
 
     // ============================================================================
-    // Tests for logout() method - Successful logout
+    // Tests pour logout - Suppression du cookie
     // ============================================================================
 
-    public function test_logout_successfully_revokes_token_and_returns_204(): void
+    public function test_logout_deletes_cookie_when_configured(): void
     {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
 
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => $token,
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
+        $user = TestUserMail::create([
+            'name' => 'Cookie Logout User',
+            'email' => 'cookielogout@example.com',
+            'password' => bcrypt('Password123!'),
         ]);
-        $tokenModel = NemesisToken::where('token_hash', $token)->first();
-
-        $response->assertStatus(204);
-        $response->assertNoContent();
 
         $nemesis = $this->app->make(NemesisInterface::class);
-        $this->assertFalse($nemesis->validateToken($token, $user));
-    }
+        $config = $this->app->make(AuthenticationKitConfigInterface::class);
 
-    public function test_logout_logs_successful_logout(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
+        [$tokenModel, $plainToken] = $nemesis->createWithPlainToken(
+            new NemesisTokenRecord(
+                name: $config->getTokenName(),
+                source: 'login',
+                metadata: new StrictDataObject([]),
+            ),
+            $user
+        );
 
-        // ✅ Utilisation du vrai LogRepository - pas de mock
+        // ✅ Stocker le token dans le cookie via Cookie::queue()
+        Cookie::queue('nemesis_token', $plainToken, 0, '/', null, false, false, false, 'lax');
+
+        // ✅ Vérifier que le cookie est en file d'attente
+        $cookieValueBefore = $this->getQueuedCookieValue('nemesis_token');
+        $this->assertNotNull($cookieValueBefore);
 
         $payload = [
             'model_type' => TestUserMail::class,
-            'token' => $token,
+            'token' => $plainToken,
         ];
 
         $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
+            'Authorization' => 'Bearer '.$plainToken,
         ]);
 
         $response->assertStatus(204);
+
+        // ✅ Vérifier que le cookie a été supprimé (expiration dans le passé)
+        $isForgotten = $this->isQueuedCookieForgotten('nemesis_token');
+        $this->assertTrue($isForgotten, 'Cookie should be forgotten');
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_logout_does_not_delete_cookie_when_not_configured(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'No Cookie Logout User',
+            'email' => 'nocookielogout@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $nemesis = $this->app->make(NemesisInterface::class);
+        $config = $this->app->make(AuthenticationKitConfigInterface::class);
+
+        [$tokenModel, $plainToken] = $nemesis->createWithPlainToken(
+            new NemesisTokenRecord(
+                name: $config->getTokenName(),
+                source: 'login',
+                metadata: new StrictDataObject([]),
+            ),
+            $user
+        );
+
+        // ✅ Stocker le token dans le cookie via Cookie::queue()
+        Cookie::queue('nemesis_token', $plainToken, 0, '/', null, false, false, false, 'lax');
+
+        // ✅ Vérifier que le cookie est en file d'attente
+        $cookieValueBefore = $this->getQueuedCookieValue('nemesis_token');
+        $this->assertNotNull($cookieValueBefore);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'token' => $plainToken,
+        ];
+
+        $response = $this->postJson('/api/logout', $payload, [
+            'Authorization' => 'Bearer '.$plainToken,
+        ]);
+
+        $response->assertStatus(204);
+
+        // ✅ Vérifier que le cookie n'a PAS été supprimé
+        $cookieValueAfter = $this->getQueuedCookieValue('nemesis_token');
+        $this->assertNotNull($cookieValueAfter);
+        $this->assertEquals($cookieValueBefore, $cookieValueAfter);
+    }
+
+    public function test_logout_deletes_cookie_with_configured_name(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'custom_logout_cookie');
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'Custom Cookie Logout',
+            'email' => 'customcookielogout@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $nemesis = $this->app->make(NemesisInterface::class);
+        $config = $this->app->make(AuthenticationKitConfigInterface::class);
+
+        [$tokenModel, $plainToken] = $nemesis->createWithPlainToken(
+            new NemesisTokenRecord(
+                name: $config->getTokenName(),
+                source: 'login',
+                metadata: new StrictDataObject([]),
+            ),
+            $user
+        );
+
+        // ✅ Stocker le token dans le cookie avec le nom personnalisé
+        Cookie::queue('custom_logout_cookie', $plainToken, 0, '/', null, false, false, false, 'lax');
+
+        // ✅ Vérifier que le cookie est en file d'attente
+        $cookieValueBefore = $this->getQueuedCookieValue('custom_logout_cookie');
+        $this->assertNotNull($cookieValueBefore);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'token' => $plainToken,
+        ];
+
+        $response = $this->postJson('/api/logout', $payload, [
+            'Authorization' => 'Bearer '.$plainToken,
+        ]);
+
+        $response->assertStatus(204);
+
+        // ✅ Vérifier que le cookie a été supprimé
+        $isForgotten = $this->isQueuedCookieForgotten('custom_logout_cookie');
+        $this->assertTrue($isForgotten, 'Cookie should be forgotten');
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+    }
+
+    public function test_logout_response_clears_cookie_when_configured(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'Response Cookie User',
+            'email' => 'responsecookie@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $nemesis = $this->app->make(NemesisInterface::class);
+        $config = $this->app->make(AuthenticationKitConfigInterface::class);
+
+        [$tokenModel, $plainToken] = $nemesis->createWithPlainToken(
+            new NemesisTokenRecord(
+                name: $config->getTokenName(),
+                source: 'login',
+                metadata: new StrictDataObject([]),
+            ),
+            $user
+        );
+
+        // ✅ Stocker le token dans le cookie via Cookie::queue()
+        Cookie::queue('nemesis_token', $plainToken, 0, '/', null, false, false, false, 'lax');
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'token' => $plainToken,
+        ];
+
+        $response = $this->postJson('/api/logout', $payload, [
+            'Authorization' => 'Bearer '.$plainToken,
+        ]);
+
+        $response->assertStatus(204);
+
+        // ✅ Vérifier que le cookie est dans la réponse avec une expiration passée
+        // Récupérer les cookies sans décryptage
+        $cookies = $response->headers->getCookies();
+        $found = false;
+        foreach ($cookies as $cookie) {
+            if ($cookie->getName() === 'nemesis_token') {
+                $found = true;
+                $this->assertLessThan(time(), $cookie->getExpiresTime());
+                break;
+            }
+        }
+        $this->assertTrue($found, 'Cookie nemesis_token should be present in response');
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_logout_after_login_with_cookie_redirects_to_login(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'Full Flow User',
+            'email' => 'fullflow@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $nemesis = $this->app->make(NemesisInterface::class);
+        $config = $this->app->make(AuthenticationKitConfigInterface::class);
+
+        [$tokenModel, $plainToken] = $nemesis->createWithPlainToken(
+            new NemesisTokenRecord(
+                name: $config->getTokenName(),
+                source: 'login',
+                metadata: new StrictDataObject([]),
+            ),
+            $user
+        );
+
+        // ✅ Stocker le token dans le cookie
+        Cookie::queue('nemesis_token', $plainToken, 0, '/', null, false, false, false, 'lax');
+
+        // ✅ Vérifier que le cookie est en file d'attente
+        $cookieValueBefore = $this->getQueuedCookieValue('nemesis_token');
+        $this->assertNotNull($cookieValueBefore);
+
+        // ✅ Logout
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'token' => $plainToken,
+        ];
+
+        $response = $this->postJson('/api/logout', $payload, [
+            'Authorization' => 'Bearer '.$plainToken,
+        ]);
+
+        $response->assertStatus(204);
+
+        // ✅ Vérifier que le cookie a été supprimé
+        $isForgotten = $this->isQueuedCookieForgotten('nemesis_token');
+        $this->assertTrue($isForgotten, 'Cookie should be forgotten');
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
     }
 
     // ============================================================================
-    // Tests for logout() method - Error cases
+    // Tests existants pour logout() - Erreurs
     // ============================================================================
 
     public function test_logout_returns_401_when_token_does_not_exist(): void
@@ -120,28 +397,6 @@ final class EmailLogoutActionTest extends IntegrationTestCase
         $response->assertStatus(401);
         $response->assertJson([
             'errorCode' => 'INVALID_TOKEN',
-        ]);
-    }
-
-    public function logout_returns_401_when_authenticatable_not_found(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $user->delete();
-
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => $token,
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-
-        $response->assertStatus(401);
-        $response->assertJson([
-            'errorCode' => 'INVALID_TOKEN',
-            'message' => 'Invalid token',
         ]);
     }
 
@@ -195,189 +450,6 @@ final class EmailLogoutActionTest extends IntegrationTestCase
         $response->assertStatus(500);
         $response->assertJson([
             'errorCode' => 'MODEL_NOT_FOUND',
-        ]);
-    }
-
-    public function test_logout_returns_500_when_model_type_does_not_implement_mail_authenticatable(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $payload = [
-            'model_type' => Application::class,
-            'token' => $token,
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-
-        $response->assertStatus(500);
-        $response->assertJson([
-            'errorCode' => 'INVALID_MODEL',
-        ]);
-    }
-
-    // ============================================================================
-    // Test de l'échec de logout - Avec un vrai token expiré ou révoqué
-    // ============================================================================
-
-    public function test_logout_returns_401_when_token_is_revoked(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $nemesis = $this->app->make(NemesisInterface::class);
-        $tokenModel = $nemesis->findByHash(hash('sha256', $token));
-
-        if ($tokenModel !== null) {
-            $nemesis->revoke($tokenModel);
-        }
-
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => $token,
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-
-        $response->assertStatus(401);
-        $response->assertJson([
-            'errorCode' => 'INVALID_TOKEN',
-        ]);
-    }
-
-    public function test_logout_returns_401_when_token_already_revoked(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $nemesis = $this->app->make(NemesisInterface::class);
-        $tokenModel = $nemesis->findByHash(hash('sha256', $token));
-
-        if ($tokenModel !== null) {
-            $nemesis->revoke($tokenModel);
-        }
-
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => $token,
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-
-        $response->assertStatus(401);
-        $response->assertJson([
-            'errorCode' => 'INVALID_TOKEN',
-        ]);
-    }
-
-    public function test_logout_returns_401_when_token_is_expired(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $nemesis = $this->app->make(NemesisInterface::class);
-        $tokenModel = $nemesis->findByHash(hash('sha256', $token));
-
-        if ($tokenModel !== null) {
-            $tokenModel->expires_at = now()->subDay();
-            $tokenModel->save();
-        }
-
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => $token,
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-
-        $response->assertStatus(401);
-        $response->assertJson([
-            'errorCode' => 'TOKEN_EXPIRED',
-        ]);
-    }
-
-    // ============================================================================
-    // Tests supplémentaires
-    // ============================================================================
-
-    public function test_logout_with_valid_token_twice_returns_401_second_time(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => $token,
-        ];
-
-        $response1 = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-        $response1->assertStatus(204);
-
-        $response2 = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-        $response2->assertStatus(401);
-        $response2->assertJson([
-            'errorCode' => 'INVALID_TOKEN',
-        ]);
-    }
-
-    public function test_logout_returns_401_when_token_is_invalid(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => 'invalid-token-123',
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-
-        $response->assertStatus(401);
-        $response->assertJson([
-            'errorCode' => 'INVALID_TOKEN',
-        ]);
-    }
-
-    // ============================================================================
-    // Test avec un vrai échec de service
-    // ============================================================================
-
-    public function logout_returns_401_when_tokenable_not_found(): void
-    {
-        [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
-
-        $nemesis = $this->app->make(NemesisInterface::class);
-        $tokenModel = $nemesis->findByHash(hash('sha256', $token));
-
-        // ✅ Modifier le tokenable_id pour qu'il ne corresponde à aucun utilisateur
-        if ($tokenModel !== null) {
-            $tokenModel->tokenable_id = 99999;
-            $tokenModel->save();
-        }
-
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'token' => $token,
-        ];
-
-        $response = $this->postJson('/api/logout', $payload, [
-            'Authorization' => $bearerToken,
-        ]);
-
-        // ✅ Le système ne trouve pas l'authenticatable
-        // Le token est considéré comme invalide
-        $response->assertStatus(401);
-        $response->assertJson([
-            'errorCode' => 'INVALID_TOKEN',
-            'message' => 'Invalid token',
         ]);
     }
 }

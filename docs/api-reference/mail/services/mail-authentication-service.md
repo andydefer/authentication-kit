@@ -2,234 +2,297 @@
 
 ## Description
 
-Service générique d'authentification par email. Il orchestre l'inscription, la connexion, la déconnexion, la réinitialisation de mot de passe et la vérification d'email pour n'importe quel modèle Eloquent implémentant `MailAuthenticatable`.
+Service générique d'authentification par email qui fonctionne avec n'importe quel modèle Eloquent implémentant l'interface `MailAuthenticatable`. Il gère l'inscription, la connexion, la déconnexion, la réinitialisation de mot de passe et la vérification d'email avec support des tokens d'authentification (Bearer ou cookies) via Nemesis.
 
-## Hiérarchie
+## Hiérarchie / Implémentations
 
 ```
 MailAuthenticationInterface
-    └── MailAuthenticationService
+    └── MailAuthenticationService [Template T de Model&MailAuthenticatable]
 ```
+
+**Génériques :**
+- `T` : Type du modèle Eloquent qui doit étendre `Model` et implémenter `MailAuthenticatable`
 
 ## Rôle principal
 
-Ce service agit comme un **orchestrateur** qui coordonne :
+Ce service est le **cœur fonctionnel** du package d'authentification. Il orchestre toutes les opérations d'authentification en :
 
-- **Laravel Otp** : Génération et validation des OTP
-- **Nemesis** : Gestion des tokens d'authentification
-- **Laravel Notification** : Envoi des emails
-- **LogRepositoryInterface** : Journalisation des événements
-- **Modèle utilisateur** : Création et gestion des comptes
+1. Gérant le cycle de vie des utilisateurs (CRUD)
+2. Créant et validant les tokens d'authentification via Nemesis
+3. Gérant les OTP (One-Time Passwords) via `OtpService`
+4. Enregistrant tous les événements via `LogRepositoryInterface`
+5. Stockant les tokens dans les cookies (optionnel)
+6. Fournissant des **hooks extensibles** pour personnaliser le comportement
 
-Il est totalement **découplé du modèle** et fonctionne avec n'importe quel modèle implémentant `MailAuthenticatable`.
+## Installation
 
----
+```bash
+# Le service est automatiquement disponible après installation du package
+composer require andydefer/authentication-kit
+
+# Configuration requise
+php artisan vendor:publish --tag=authentication-kit-config
+```
 
 ## API / Méthodes publiques
 
-### `for(string $modelClass): self`
-
-Crée une instance du service pour un modèle spécifique.
+### `for(string $modelClass): static`
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$modelClass` | `string` | Le FQCN du modèle (ex: `User::class`) |
+| `$modelClass` | `class-string<T>` | Classe du modèle d'authentification |
 
-**Retourne :** `self` - Une instance du service typée pour le modèle
+**Retourne :** `static<T>` - Instance du service configurée pour le modèle donné
 
-**Exceptions :** `InvalidArgumentException` si la classe n'existe pas ou n'implémente pas `MailAuthenticatable`
+**Exceptions :** `InvalidArgumentException` si la classe n'existe pas ou n'implémente pas l'interface
 
 **Exemple :**
 ```php
-$authService = MailAuthenticationService::for(User::class);
-```
+<?php
 
----
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use App\Models\User;
+
+$service = MailAuthenticationService::for(User::class);
+```
 
 ### `register(AbstractRecord $record): Model&Authenticatable`
 
-Inscrit un nouvel utilisateur.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$record` | `AbstractRecord` | Record d'inscription (`EmailRegisterAuthRecord`) |
+| `$record` | `EmailRegisterAuthRecord` | Données d'inscription |
 
 **Retourne :** `Model&Authenticatable` - L'utilisateur créé
 
-**Exceptions :** `InvalidArgumentException` si le type de record est invalide, `ValidationException` si les données sont invalides
+**Exceptions :** 
+- `InvalidArgumentException` si le record n'est pas du bon type
+- `ValidationException` si les données de validation échouent
 
 **Exemple :**
 ```php
-$record = new EmailRegisterAuthRecord(
-    model_type: User::class,
-    with_token: true,
-    data: new StrictDataObject([
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
+use AndyDefer\DomainStructures\Utils\StrictDataObject;
+
+$record = EmailRegisterAuthRecord::from([
+    'model_type' => User::class,
+    'data' => StrictDataObject::from([
         'name' => 'John Doe',
         'email' => 'john@example.com',
         'password' => 'Password123!',
         'password_confirmation' => 'Password123!',
-    ])
-);
+    ]),
+    'with_token' => true,
+]);
 
-$user = $authService->register($record);
+$user = $service->register($record);
 ```
-
----
 
 ### `login(string $email, string $password): ?NemesisTokenRecord`
 
-Authentifie un utilisateur avec email et mot de passe.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
 | `$email` | `string` | Email de l'utilisateur |
-| `$password` | `string` | Mot de passe de l'utilisateur |
+| `$password` | `string` | Mot de passe en clair |
 
-**Retourne :** `NemesisTokenRecord|null` - Le token d'authentification ou null si échec
+**Retourne :** `NemesisTokenRecord|null` - Record du token créé, ou `null` en cas d'échec
 
 **Exemple :**
 ```php
-$token = $authService->login('john@example.com', 'Password123!');
+<?php
+
+declare(strict_types=1);
+
+$token = $service->login('john@example.com', 'Password123!');
 
 if ($token !== null) {
-    echo 'Connexion réussie : ' . $token->getPlainText();
+    // Le token est automatiquement stocké dans le cookie si configuré
+    return response()->json(['token' => $token->token]);
 }
-```
 
----
+return response()->json(['error' => 'Invalid credentials'], 401);
+```
 
 ### `logout(Authenticatable&Model $authenticatable, string $plainToken): bool`
 
-Déconnecte un utilisateur en révoquant son token.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$authenticatable` | `Authenticatable&Model` | L'utilisateur connecté |
+| `$authenticatable` | `Authenticatable&Model` | L'utilisateur authentifié |
 | `$plainToken` | `string` | Le token en clair à révoquer |
 
-**Retourne :** `bool` - True si la déconnexion a réussi
+**Retourne :** `bool` - `true` si la déconnexion a réussi, `false` sinon
 
 **Exemple :**
 ```php
-$success = $authService->logout($user, $plainToken);
-```
+<?php
 
----
+declare(strict_types=1);
+
+use App\Models\User;
+
+$user = User::find(1);
+$result = $service->logout($user, 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...');
+
+if ($result) {
+    // Le cookie est automatiquement supprimé si configuré
+    return response()->json(['message' => 'Logged out']);
+}
+```
 
 ### `sendPasswordResetOtp(string $email): bool`
 
-Envoie un OTP de réinitialisation de mot de passe.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
 | `$email` | `string` | Email de l'utilisateur |
 
-**Retourne :** `bool` - True si l'OTP a été envoyé
+**Retourne :** `bool` - `true` si l'OTP a été envoyé, `false` sinon
 
 **Exemple :**
 ```php
-$authService->sendPasswordResetOtp('john@example.com');
-```
+<?php
 
----
+$success = $service->sendPasswordResetOtp('john@example.com');
+
+if ($success) {
+    return response()->json(['message' => 'Reset code sent']);
+}
+```
 
 ### `resetPassword(string $email, string $code, string $password): bool`
 
-Réinitialise le mot de passe avec un OTP valide.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
 | `$email` | `string` | Email de l'utilisateur |
-| `$code` | `string` | Code OTP |
+| `$code` | `string` | Code OTP reçu |
 | `$password` | `string` | Nouveau mot de passe |
 
-**Retourne :** `bool` - True si la réinitialisation a réussi
+**Retourne :** `bool` - `true` si le mot de passe a été réinitialisé
 
 **Exemple :**
 ```php
-$success = $authService->resetPassword(
+<?php
+
+$success = $service->resetPassword(
     'john@example.com',
     '123456',
     'NewPassword123!'
 );
-```
 
----
+if ($success) {
+    return response()->json(['message' => 'Password reset successful']);
+}
+```
 
 ### `sendEmailVerificationOtp(Authenticatable&Model $authenticatable): bool`
 
-Envoie un OTP de vérification d'email.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$authenticatable` | `Authenticatable&Model` | L'utilisateur |
+| `$authenticatable` | `Authenticatable&Model` | L'utilisateur à vérifier |
 
-**Retourne :** `bool` - True si l'OTP a été envoyé
+**Retourne :** `bool` - `true` si l'OTP a été envoyé ou si déjà vérifié
 
 **Exemple :**
 ```php
-$authService->sendEmailVerificationOtp($user);
+<?php
+
+use App\Models\User;
+
+$user = User::find(1);
+$success = $service->sendEmailVerificationOtp($user);
+
+if ($success) {
+    return response()->json(['message' => 'Verification code sent']);
+}
 ```
 
----
-
 ### `verifyEmail(string $email, string $code): bool`
-
-Vérifie l'email avec un OTP valide.
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
 | `$email` | `string` | Email de l'utilisateur |
-| `$code` | `string` | Code OTP |
+| `$code` | `string` | Code OTP de vérification |
 
-**Retourne :** `bool` - True si la vérification a réussi
+**Retourne :** `bool` - `true` si l'email a été vérifié
 
 **Exemple :**
 ```php
-$success = $authService->verifyEmail('john@example.com', '123456');
-```
+<?php
 
----
+$success = $service->verifyEmail('john@example.com', '654321');
+
+if ($success) {
+    return response()->json(['message' => 'Email verified']);
+}
+```
 
 ### `resendEmailVerificationOtp(Authenticatable&Model $authenticatable): bool`
 
-Renvoie l'OTP de vérification d'email.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$authenticatable` | `Authenticatable&Model` | L'utilisateur |
+| `$authenticatable` | `Authenticatable&Model` | L'utilisateur à vérifier |
 
-**Retourne :** `bool` - True si l'OTP a été renvoyé
+**Retourne :** `bool` - `true` si l'OTP a été renvoyé
 
----
+**Exemple :**
+```php
+<?php
+
+use App\Models\User;
+
+$user = User::find(1);
+$success = $service->resendEmailVerificationOtp($user);
+```
 
 ### `isEmailVerified(Authenticatable&Model $authenticatable): bool`
 
-Vérifie si l'email d'un utilisateur est vérifié.
-
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$authenticatable` | `Authenticatable&Model` | L'utilisateur |
+| `$authenticatable` | `Authenticatable&Model` | L'utilisateur à vérifier |
 
-**Retourne :** `bool` - True si l'email est vérifié
+**Retourne :** `bool` - `true` si l'email est vérifié
 
----
+**Exemple :**
+```php
+<?php
+
+use App\Models\User;
+
+$user = User::find(1);
+if ($service->isEmailVerified($user)) {
+    // Accès autorisé
+}
+```
 
 ### `userExists(string $email): bool`
-
-Vérifie si un utilisateur existe avec cet email.
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
 | `$email` | `string` | Email à vérifier |
 
-**Retourne :** `bool` - True si l'utilisateur existe
+**Retourne :** `bool` - `true` si l'utilisateur existe
 
----
+**Exemple :**
+```php
+<?php
+
+if ($service->userExists('john@example.com')) {
+    return response()->json(['message' => 'User exists']);
+}
+```
 
 ## Cas d'utilisation
 
-### Cas 1 : Authentification complète avec email et mot de passe
+### Cas 1 : Inscription complète avec token et cookie
+
+**Problème** : L'utilisateur s'inscrit et doit être automatiquement connecté sans étape supplémentaire.
+
+**Solution** : Utiliser `with_token = true` et configurer le stockage des cookies.
 
 ```php
 <?php
@@ -237,163 +300,528 @@ Vérifie si un utilisateur existe avec cet email.
 declare(strict_types=1);
 
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
-use AndyDefer\AuthenticationKit\Mail\Records\EmailLoginAuthRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
+use App\Models\User;
 
-$authService = MailAuthenticationService::for(User::class);
+// Configuration du cookie (config/authentication-kit.php)
+'store_token_in_cookie' => true,
 
-$record = new EmailLoginAuthRecord(
-    model_type: User::class,
-    data: new StrictDataObject([
-        'email' => 'john@example.com',
-        'password' => 'Password123!',
-    ])
-);
+// Service
+$service = MailAuthenticationService::for(User::class);
 
-$user = $authService->register($record);
-$token = $authService->login('john@example.com', 'Password123!');
+// Création du record
+$record = EmailRegisterAuthRecord::from([
+    'model_type' => User::class,
+    'data' => StrictDataObject::from([
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.com',
+        'password' => 'SecurePass123!',
+        'password_confirmation' => 'SecurePass123!',
+    ]),
+    'with_token' => true,
+]);
+
+// Inscription
+$user = $service->register($record);
+
+// Le token est automatiquement stocké dans le cookie
+// L'utilisateur est connecté
+return redirect()->to('/dashboard');
 ```
 
-### Cas 2 : Vérification d'email et réinitialisation de mot de passe
+### Cas 2 : Connexion avec gestion d'erreurs
+
+**Problème** : L'utilisateur tente de se connecter avec des identifiants invalides.
+
+**Solution** : Gérer les différents cas d'échec.
 
 ```php
-$authService = MailAuthenticationService::for(User::class);
+<?php
 
-// Envoyer l'OTP de vérification
-$authService->sendEmailVerificationOtp($user);
+declare(strict_types=1);
 
-// Vérifier l'email
-$verified = $authService->verifyEmail('john@example.com', '123456');
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use App\Models\User;
+use Illuminate\Http\Request;
 
-// Envoyer l'OTP de réinitialisation
-$authService->sendPasswordResetOtp('john@example.com');
-
-// Réinitialiser le mot de passe
-$reset = $authService->resetPassword('john@example.com', '123456', 'NewPassword123!');
-```
-
-### Cas 3 : Extension avec des hooks personnalisés
-
-```php
-final class CustomAuthService extends MailAuthenticationService
+class LoginController extends Controller
 {
-    protected function beforeRegister(AbstractRecord $record): void
+    public function login(Request $request)
     {
-        // Vérifier l'IP
-        if ($this->isIpBlocked($record->ip)) {
-            throw new \RuntimeException('IP blocked');
+        $email = $request->input('email');
+        $password = $request->input('password');
+
+        $service = MailAuthenticationService::for(User::class);
+        
+        $token = $service->login($email, $password);
+
+        if ($token === null) {
+            // Vérification si l'utilisateur existe
+            if (!$service->userExists($email)) {
+                return response()->json([
+                    'error' => 'User not found'
+                ], 404);
+            }
+
+            // Si l'utilisateur existe, le mot de passe est incorrect
+            return response()->json([
+                'error' => 'Invalid password'
+            ], 401);
         }
-    }
 
-    protected function afterRegister(Model&Authenticatable $user, AbstractRecord $record): void
-    {
-        // Créer un profil
-        $user->profile()->create([
-            'bio' => $record->data->get('bio'),
+        // Connexion réussie
+        return response()->json([
+            'user' => $service->user,
+            'token' => $token->token
         ]);
-    }
-
-    protected function afterLogin(Model&Authenticatable $user): void
-    {
-        // Mettre à jour la dernière connexion
-        $user->last_login_at = now();
-        $user->save();
     }
 }
 ```
 
----
+### Cas 3 : Réinitialisation de mot de passe avec OTP
+
+**Problème** : L'utilisateur a oublié son mot de passe et doit le réinitialiser en deux étapes.
+
+**Solution** : Envoyer un OTP, puis valider et réinitialiser.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use App\Models\User;
+
+class PasswordResetController extends Controller
+{
+    public function requestReset(Request $request)
+    {
+        $email = $request->input('email');
+        $service = MailAuthenticationService::for(User::class);
+        
+        // Étape 1 : Envoyer l'OTP
+        $sent = $service->sendPasswordResetOtp($email);
+        
+        if (!$sent) {
+            return response()->json([
+                'error' => 'Unable to send reset code'
+            ], 400);
+        }
+        
+        return response()->json([
+            'message' => 'Reset code sent to your email'
+        ]);
+    }
+    
+    public function confirmReset(Request $request)
+    {
+        $email = $request->input('email');
+        $code = $request->input('code');
+        $password = $request->input('password');
+        
+        $service = MailAuthenticationService::for(User::class);
+        
+        // Étape 2 : Valider l'OTP et réinitialiser
+        $reset = $service->resetPassword($email, $code, $password);
+        
+        if (!$reset) {
+            return response()->json([
+                'error' => 'Invalid or expired reset code'
+            ], 400);
+        }
+        
+        return response()->json([
+            'message' => 'Password reset successfully'
+        ]);
+    }
+}
+```
+
+### Cas 4 : Vérification d'email en deux étapes
+
+**Problème** : L'utilisateur doit vérifier son email avant d'accéder à certaines fonctionnalités.
+
+**Solution** : Envoyer un OTP de vérification, puis valider.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use App\Models\User;
+
+class EmailVerificationController extends Controller
+{
+    public function sendVerification(Request $request)
+    {
+        $user = $request->user();
+        $service = MailAuthenticationService::for(User::class);
+        
+        // Vérifier si déjà vérifié
+        if ($service->isEmailVerified($user)) {
+            return response()->json([
+                'message' => 'Email already verified'
+            ], 200);
+        }
+        
+        // Envoyer l'OTP
+        $sent = $service->sendEmailVerificationOtp($user);
+        
+        if (!$sent) {
+            return response()->json([
+                'error' => 'Unable to send verification code. Please try again later.'
+            ], 429);
+        }
+        
+        return response()->json([
+            'message' => 'Verification code sent to your email'
+        ]);
+    }
+    
+    public function verify(Request $request)
+    {
+        $email = $request->input('email');
+        $code = $request->input('code');
+        
+        $service = MailAuthenticationService::for(User::class);
+        
+        $verified = $service->verifyEmail($email, $code);
+        
+        if (!$verified) {
+            return response()->json([
+                'error' => 'Invalid or expired verification code'
+            ], 400);
+        }
+        
+        return response()->json([
+            'message' => 'Email verified successfully'
+        ]);
+    }
+}
+```
+
+### Cas 5 : Personnalisation avec les hooks
+
+**Problème** : Besoin d'ajouter des comportements spécifiques (logs, notifications, etc.).
+
+**Solution** : Étendre le service et surcharger les hooks.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
+use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\WelcomeEmail;
+use App\Mail\PasswordChangedEmail;
+
+class CustomAuthService extends MailAuthenticationService
+{
+    // ✅ Hook après inscription
+    protected function afterRegister(Model&Authenticatable $user, AbstractRecord $record): void
+    {
+        // Envoyer un email de bienvenue
+        Mail::to($user->email)->send(new WelcomeEmail($user));
+        
+        // Assigner un rôle par défaut
+        if (method_exists($user, 'assignRole')) {
+            $user->assignRole('user');
+        }
+        
+        // Logger l'événement
+        \Log::info('New user registered', ['user_id' => $user->id, 'email' => $user->email]);
+    }
+    
+    // ✅ Hook après connexion
+    protected function afterLogin(Model&Authenticatable $user): void
+    {
+        // Mettre à jour la date de dernière connexion
+        $user->last_login_at = now();
+        $user->last_login_ip = request()->ip();
+        $user->save();
+        
+        // Logger l'activité
+        \Log::info('User logged in', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'ip' => request()->ip()
+        ]);
+    }
+    
+    // ✅ Hook avant envoi d'OTP
+    protected function beforeSendPasswordResetOtp(string $email): void
+    {
+        // Vérifier que l'email n'est pas banni
+        if (BannedEmail::where('email', $email)->exists()) {
+            throw new \Exception('This email address is banned');
+        }
+        
+        // Vérifier le taux de demandes
+        $attempts = Cache::get("reset_attempts_{$email}", 0);
+        if ($attempts >= 5) {
+            throw new \Exception('Too many reset attempts. Please try again later.');
+        }
+        
+        Cache::increment("reset_attempts_{$email}", 60);
+    }
+    
+    // ✅ Hook après réinitialisation de mot de passe
+    protected function afterResetPassword(Model&Authenticatable $user): void
+    {
+        // Invalider tous les tokens existants
+        $this->nemesis->revokeAllForUser($user);
+        
+        // Envoyer une notification
+        Mail::to($user->email)->send(new PasswordChangedEmail($user));
+        
+        // Logger
+        \Log::alert('Password reset', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'ip' => request()->ip()
+        ]);
+    }
+    
+    // ✅ Hook après vérification d'email
+    protected function afterVerifyEmail(Model&Authenticatable $user): void
+    {
+        // Activer le compte
+        $user->is_active = true;
+        $user->save();
+        
+        // Envoyer une notification de bienvenue
+        Mail::to($user->email)->send(new EmailVerifiedEmail($user));
+        
+        \Log::info('Email verified', [
+            'user_id' => $user->id,
+            'email' => $user->email
+        ]);
+    }
+}
+
+// Utilisation
+$service = CustomAuthService::for(User::class);
+```
 
 ## Flux d'exécution
 
+### Inscription
 ```
-register()
-    ↓
-beforeRegister() [HOOK]
-    ↓
-Validation (email, password)
-    ↓
-model::generate($data)
-    ↓
-Log Registration Success
-    ↓
-afterRegister() [HOOK]
-    ↓
-Retourne l'utilisateur
-
-login()
-    ↓
-beforeLogin() [HOOK]
-    ↓
-Recherche utilisateur par email
-    ↓
-Vérification mot de passe
-    ↓
-Log Login Success
-    ↓
-afterLogin() [HOOK]
-    ↓
-Création du token Nemesis
-    ↓
-Retourne le token
+EmailRegisterAuthRecord → Validation → Génération du modèle
+                                    ↓
+                            Création du token (si with_token)
+                                    ↓
+                            Stockage du cookie (si configuré)
+                                    ↓
+                            Log de succès
+                                    ↓
+                            Hooks afterRegister()
+                                    ↓
+                            Retour du modèle
 ```
 
----
+### Connexion
+```
+Email + Password → Recherche de l'utilisateur
+                ↓
+        Vérification du mot de passe
+                ↓
+        Création du token via Nemesis
+                ↓
+        Stockage du cookie (si configuré)
+                ↓
+        Log de succès
+                ↓
+        Hook afterLogin()
+                ↓
+        Retour du token record
+```
+
+### Vérification d'email
+```
+Email + Code → Recherche de l'utilisateur
+            ↓
+    Vérification déjà effectuée ?
+            ↓
+    Vérification de l'OTP
+            ↓
+    Mise à jour de email_verified_at
+            ↓
+    Log de succès
+            ↓
+    Hook afterVerifyEmail()
+            ↓
+    Retour true
+```
+
+### Déconnexion
+```
+Plain Token → Recherche du token via Nemesis
+            ↓
+    Révocation du token
+            ↓
+    Suppression du cookie (si configuré)
+            ↓
+    Log de succès/échec
+            ↓
+    Hook afterLogout()
+            ↓
+    Retour booléen
+```
 
 ## Gestion des erreurs
 
 | Situation | Exception | Message |
 |-----------|-----------|---------|
+| Modèle inexistant | `InvalidArgumentException` | `Model class {className} does not exist` |
+| Modèle invalide | `InvalidArgumentException` | `Model {className} must implement MailAuthenticatable` |
 | Record invalide | `InvalidArgumentException` | `Invalid record type` |
-| Modèle inexistant | `InvalidArgumentException` | `Model class X does not exist` |
-| Modèle non compatible | `InvalidArgumentException` | `Model X must implement MailAuthenticatable` |
-| Validation échoue | `ValidationException` | Erreurs de validation Laravel |
-| Utilisateur non trouvé | - | Log uniquement |
-| Mot de passe invalide | - | Log uniquement |
-| OTP invalide | - | Log uniquement |
-| Rate limit dépassé | - | Log uniquement |
-
----
+| Validation échouée | `ValidationException` | Messages de validation personnalisés |
+| Rate limit dépassé | - | Log avec `ErrorType::RATE_LIMIT_EXCEEDED` |
+| Utilisateur non trouvé | - | Log avec `ErrorType::USER_NOT_FOUND` |
+| OTP invalide | - | Log avec `ErrorType::INVALID_OTP` |
+| Token non trouvé | - | Log avec `ErrorType::TOKEN_NOT_FOUND` |
+| Échec révocation | - | Log avec `ErrorType::TOKEN_REVOKE_FAILED` |
 
 ## Intégration
 
-### Dépendances injectées
+### Avec les modèles Eloquent
 
-| Dépendance | Rôle |
-|------------|------|
-| `NemesisInterface` | Gestion des tokens |
-| `OtpService` | Gestion des OTP |
-| `LogRepositoryInterface` | Journalisation |
+Le modèle doit implémenter `MailAuthenticatable` :
 
-### Dépendances du modèle
+```php
+<?php
 
-Le modèle doit implémenter :
+declare(strict_types=1);
 
-- `MailAuthenticatable` : Interface d'authentification
-- `generate(array $data)` : Création d'un utilisateur
+namespace App\Models;
 
----
+use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class User extends Model implements MailAuthenticatable
+{
+    use SoftDeletes;
+    
+    protected $fillable = ['name', 'email', 'password'];
+    
+    protected $hidden = ['password'];
+    
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'last_login_at' => 'datetime',
+    ];
+    
+    // Méthodes requises par MailAuthenticatable
+    public function getAuthIdentifierName(): string
+    {
+        return 'id';
+    }
+    
+    public function getAuthIdentifier(): mixed
+    {
+        return $this->id;
+    }
+    
+    public function getAuthPassword(): string
+    {
+        return $this->password;
+    }
+    
+    // Méthode de fabrication (factory) pour l'inscription
+    public static function generate(array $data): static
+    {
+        $model = new static();
+        $model->fill($data);
+        $model->password = Hash::make($data['password']);
+        $model->save();
+        
+        return $model;
+    }
+    
+    // Format pour l'API
+    public function nemesisFormat(): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'email' => $this->email,
+            'emailVerifiedAt' => $this->email_verified_at?->toIso8601String(),
+            'createdAt' => $this->created_at?->toIso8601String(),
+            'updatedAt' => $this->updated_at?->toIso8601String(),
+        ];
+    }
+}
+```
+
+### Avec la configuration
+
+```php
+// config/authentication-kit.php
+return [
+    'token_name' => 'my_auth_token',
+    'password_reset_rate_limit' => 3, // Tentatives max
+    'email_verification_rate_limit' => 5,
+    'store_token_in_cookie' => true, // Stockage automatique
+];
+```
+
+### Avec le middleware
+
+```php
+// routes/api.php
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
+use AndyDefer\AuthenticationKit\Mail\Actions\GetCurrentUserAction;
+
+Route::middleware(['validate.mail.authenticatable'])->group(function () {
+    Route::post('/register', action_route(
+        EmailRegisterRequest::class,
+        EmailRegisterAction::class
+    ));
+    
+    Route::post('/login', action_route(
+        EmailLoginRequest::class,
+        EmailLoginAction::class
+    ));
+});
+
+Route::post('/me', action_route(
+    EmptyRequest::class,
+    GetCurrentUserAction::class
+));
+```
 
 ## Performance
 
-- **Recherche utilisateur** : Indexé par email → O(log n)
-- **Vérification OTP** : O(1) avec cache
-- **Création token** : O(1) avec chiffrement
-- **Rate limiting** : O(1) avec cache
-
----
+- **Complexité** : O(1) pour la plupart des opérations
+- **Base de données** : Une requête par opération principale
+- **Caches** : Utilisation du cache Laravel pour les OTP
+- **Tokens** : Génération en O(1), validation par hash SHA-256 en O(1)
+- **Cookies** : Lecture/écriture sans impact significatif
+- **Optimisation** : Les hooks sont optionnels et légers
+- **Rate Limiting** : Géré par OtpService avec cache
 
 ## Compatibilité
 
-| Version | Support |
-|---------|---------|
-| PHP 8.1+ | ✅ Complet |
-| PHP 8.0 | ✅ Complet |
-| Laravel 9.x | ✅ Complet |
-| Laravel 10.x | ✅ Complet |
-| Laravel 11.x | ✅ Complet |
-
----
+| Version | Support | Détails |
+|---------|---------|---------|
+| PHP 8.1+ | ✅ Complet | Types génériques, énumérations |
+| PHP 8.0 | ✅ Complet | Support complet |
+| Laravel 12 | ✅ Complet | Framework supporté |
+| Laravel 13 | ✅ Complet | Framework supporté |
+| Laravel 14 | ✅ Complet | Framework supporté |
+| Laravel 15 | ✅ Complet | Framework supporté |
 
 ## Exemple complet
 
@@ -406,49 +834,190 @@ use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailLoginAuthRecord;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
-// 1. Créer le service
-$authService = MailAuthenticationService::for(User::class);
-
-// 2. Inscription
-$registerRecord = new EmailRegisterAuthRecord(
-    model_type: User::class,
-    with_token: true,
-    data: new StrictDataObject([
-        'name' => 'John Doe',
-        'email' => 'john@example.com',
-        'password' => 'Password123!',
-        'password_confirmation' => 'Password123!',
-    ])
-);
-
-$user = $authService->register($registerRecord);
-
-// 3. Connexion
-$loginRecord = new EmailLoginAuthRecord(
-    model_type: User::class,
-    data: new StrictDataObject([
-        'email' => 'john@example.com',
-        'password' => 'Password123!',
-    ])
-);
-
-$token = $authService->login('john@example.com', 'Password123!');
-
-// 4. Vérification email
-$authService->sendEmailVerificationOtp($user);
-$verified = $authService->verifyEmail('john@example.com', '123456');
-
-// 5. Déconnexion
-$logout = $authService->logout($user, $token->getPlainText());
+class AuthController extends Controller
+{
+    private MailAuthenticationService $service;
+    
+    public function __construct()
+    {
+        $this->service = MailAuthenticationService::for(User::class);
+    }
+    
+    /**
+     * Inscription d'un nouvel utilisateur
+     */
+    public function register(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users',
+            'password' => 'required|min:8|confirmed',
+        ]);
+        
+        $record = EmailRegisterAuthRecord::from([
+            'model_type' => User::class,
+            'data' => StrictDataObject::from($validated),
+            'with_token' => true,
+        ]);
+        
+        try {
+            $user = $this->service->register($record);
+            
+            return response()->json([
+                'user' => $user->nemesisFormat(),
+                'message' => 'Registration successful'
+            ], 201);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'errors' => $e->errors(),
+                'message' => 'Validation failed'
+            ], 422);
+        }
+    }
+    
+    /**
+     * Connexion utilisateur
+     */
+    public function login(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required|string',
+        ]);
+        
+        $token = $this->service->login(
+            $validated['email'],
+            $validated['password']
+        );
+        
+        if ($token === null) {
+            return response()->json([
+                'error' => 'Invalid credentials'
+            ], 401);
+        }
+        
+        return response()->json([
+            'token' => $token->token,
+            'message' => 'Login successful'
+        ]);
+    }
+    
+    /**
+     * Déconnexion
+     */
+    public function logout(Request $request)
+    {
+        $user = $request->user();
+        $token = $request->bearerToken();
+        
+        if ($token === null) {
+            return response()->json([
+                'error' => 'Token required'
+            ], 401);
+        }
+        
+        $result = $this->service->logout($user, $token);
+        
+        if (!$result) {
+            return response()->json([
+                'error' => 'Logout failed'
+            ], 500);
+        }
+        
+        return response()->json([
+            'message' => 'Logout successful'
+        ]);
+    }
+    
+    /**
+     * Demande de réinitialisation de mot de passe
+     */
+    public function requestPasswordReset(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+        ]);
+        
+        $sent = $this->service->sendPasswordResetOtp($validated['email']);
+        
+        if (!$sent) {
+            return response()->json([
+                'error' => 'Unable to send reset code. Please try again later.'
+            ], 429);
+        }
+        
+        return response()->json([
+            'message' => 'Reset code sent to your email'
+        ]);
+    }
+    
+    /**
+     * Confirmation de réinitialisation de mot de passe
+     */
+    public function confirmPasswordReset(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|string|size:6',
+            'password' => 'required|min:8|confirmed',
+        ]);
+        
+        $reset = $this->service->resetPassword(
+            $validated['email'],
+            $validated['code'],
+            $validated['password']
+        );
+        
+        if (!$reset) {
+            return response()->json([
+                'error' => 'Invalid or expired reset code'
+            ], 400);
+        }
+        
+        return response()->json([
+            'message' => 'Password reset successful'
+        ]);
+    }
+    
+    /**
+     * Vérification d'email
+     */
+    public function verifyEmail(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|string|size:6',
+        ]);
+        
+        $verified = $this->service->verifyEmail(
+            $validated['email'],
+            $validated['code']
+        );
+        
+        if (!$verified) {
+            return response()->json([
+                'error' => 'Invalid or expired verification code'
+            ], 400);
+        }
+        
+        return response()->json([
+            'message' => 'Email verified successfully'
+        ]);
+    }
+}
 ```
-
----
 
 ## Voir aussi
 
-- `MailAuthenticatable` - Interface du modèle authentifiable
+- `MailAuthenticatable` - Interface des modèles authentifiables
 - `MailAuthenticationInterface` - Interface du service
-- `LogRepositoryInterface` - Interface de journalisation
-- `EmailRegisterAuthRecord` - Record d'inscription
-- `EmailLoginAuthRecord` - Record de connexion
+- `ValidateMailAuthenticatableMiddleware` - Middleware de validation
+- `LogRepository` - Gestion des logs d'authentification
+- `NemesisInterface` - Gestion des tokens d'authentification
+- `OtpService` - Gestion des OTP (One-Time Passwords)
+- `CookieTokenStorageInterface` - Stockage des tokens dans les cookies
+- `ErrorType` - Types d'erreurs pour les logs

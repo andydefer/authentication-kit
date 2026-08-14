@@ -6,6 +6,8 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
@@ -38,7 +40,7 @@ final class VerifyEmailAction extends AbstractAction
 
     private ?string $errorMessage = null;
 
-    private ?string $errorClass = null;
+    private ?ErrorType $errorType = null;
 
     public function __construct(
         private readonly MailAuthenticationInterface $authService,
@@ -56,11 +58,11 @@ final class VerifyEmailAction extends AbstractAction
         if (! $record instanceof VerifyEmailRecord) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid record type',
-                    status: 500,
-                    errorCode: 'INVALID_RECORD_TYPE'
+                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
+                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
                 ),
-                500
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
             );
         }
 
@@ -79,15 +81,15 @@ final class VerifyEmailAction extends AbstractAction
             if ($authenticatable === null) {
                 $this->success = false;
                 $this->errorMessage = 'User not found';
-                $this->errorClass = 'UserNotFoundException';
+                $this->errorType = ErrorType::USER_NOT_FOUND;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'An error occurred while verifying email',
-                        status: 500,
-                        errorCode: 'VERIFY_EMAIL_ERROR'
+                        message: ErrorCode::VERIFY_EMAIL_ERROR->message(),
+                        status: ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode(),
+                        errorCode: ErrorCode::VERIFY_EMAIL_ERROR->value
                     ),
-                    500
+                    ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()
                 );
             }
 
@@ -96,15 +98,15 @@ final class VerifyEmailAction extends AbstractAction
             if ($usesSoftDeletes && $authenticatable->trashed()) {
                 $this->success = false;
                 $this->errorMessage = 'User not found';
-                $this->errorClass = 'UserNotFoundException';
+                $this->errorType = ErrorType::USER_NOT_FOUND;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'An error occurred while verifying email',
-                        status: 500,
-                        errorCode: 'VERIFY_EMAIL_ERROR'
+                        message: ErrorCode::VERIFY_EMAIL_ERROR->message(),
+                        status: ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode(),
+                        errorCode: ErrorCode::VERIFY_EMAIL_ERROR->value
                     ),
-                    500
+                    ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()
                 );
             }
 
@@ -133,15 +135,15 @@ final class VerifyEmailAction extends AbstractAction
             if (! $verified) {
                 $this->success = false;
                 $this->errorMessage = 'Invalid or expired verification OTP';
-                $this->errorClass = 'InvalidVerificationOtpException';
+                $this->errorType = ErrorType::INVALID_OTP;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'Invalid or expired verification OTP',
-                        status: 400,
-                        errorCode: 'INVALID_VERIFICATION_OTP'
+                        message: ErrorCode::INVALID_VERIFICATION_OTP->message(),
+                        status: ErrorCode::INVALID_VERIFICATION_OTP->getHttpStatusCode(),
+                        errorCode: ErrorCode::INVALID_VERIFICATION_OTP->value
                     ),
-                    400
+                    ErrorCode::INVALID_VERIFICATION_OTP->getHttpStatusCode()
                 );
             }
 
@@ -165,22 +167,22 @@ final class VerifyEmailAction extends AbstractAction
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
+            $this->errorType = ErrorType::VALIDATION_ERROR;
 
             $this->logRepository->logVerificationFailure(
                 email: $this->email,
                 modelClass: $this->modelClass,
                 error: $this->errorMessage,
-                errorClass: $this->errorClass,
+                errorType: $this->errorType,
             );
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'An error occurred while verifying email',
-                    status: 500,
-                    errorCode: 'VERIFY_EMAIL_ERROR'
+                    message: ErrorCode::VERIFY_EMAIL_ERROR->message(),
+                    status: ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::VERIFY_EMAIL_ERROR->value
                 ),
-                500
+                ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()
             );
         }
     }
@@ -208,11 +210,14 @@ final class VerifyEmailAction extends AbstractAction
             return;
         }
 
+        $errorType = $this->errorType ?? ErrorType::INVALID_OTP;
+        $errorMessage = $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error');
+
         $this->logRepository->logVerificationFailure(
             email: $this->email,
             modelClass: $this->modelClass,
-            error: $this->errorMessage ?? 'Unknown error',
-            errorClass: $this->errorClass ?? 'UnknownException',
+            error: $errorMessage,
+            errorType: $errorType,
         );
     }
 }

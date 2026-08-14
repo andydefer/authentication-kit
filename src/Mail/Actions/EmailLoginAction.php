@@ -8,6 +8,8 @@ use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Enums\TokenSource;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
@@ -46,7 +48,7 @@ final class EmailLoginAction extends AbstractAction
 
     private ?string $errorMessage = null;
 
-    private ?string $errorClass = null;
+    private ?ErrorType $errorType = null;
 
     public function __construct(
         private readonly NemesisInterface $nemesis,
@@ -85,7 +87,14 @@ final class EmailLoginAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof EmailLoginAuthRecord) {
-            throw new \InvalidArgumentException('Invalid record type');
+            return ResponseFactory::json(
+                new ErrorResponseData(
+                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
+                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
+                ),
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
+            );
         }
 
         try {
@@ -98,8 +107,8 @@ final class EmailLoginAction extends AbstractAction
             if ($email === null || $password === null) {
                 $this->success = false;
                 $this->email = $email ?? 'unknown';
-                $this->errorMessage = 'Email and password are required';
-                $this->errorClass = 'MissingCredentialsException';
+                $this->errorMessage = ErrorCode::MISSING_CREDENTIALS->message();
+                $this->errorType = ErrorType::MISSING_CREDENTIALS;
 
                 $errors = [];
                 if ($email === null) {
@@ -111,12 +120,12 @@ final class EmailLoginAction extends AbstractAction
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'Email and password are required',
-                        status: 400,
-                        errorCode: 'MISSING_CREDENTIALS',
+                        message: ErrorCode::MISSING_CREDENTIALS->message(),
+                        status: ErrorCode::MISSING_CREDENTIALS->getHttpStatusCode(),
+                        errorCode: ErrorCode::MISSING_CREDENTIALS->value,
                         errors: DataObject::from($errors),
                     ),
-                    400
+                    ErrorCode::MISSING_CREDENTIALS->getHttpStatusCode()
                 );
             }
 
@@ -128,16 +137,16 @@ final class EmailLoginAction extends AbstractAction
 
             if ($tokenRecord === null) {
                 $this->success = false;
-                $this->errorMessage = 'Invalid credentials';
-                $this->errorClass = 'InvalidCredentialsException';
+                $this->errorMessage = ErrorCode::INVALID_CREDENTIALS->message();
+                $this->errorType = ErrorType::INVALID_CREDENTIALS;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'Invalid credentials',
-                        status: 401,
-                        errorCode: 'INVALID_CREDENTIALS'
+                        message: ErrorCode::INVALID_CREDENTIALS->message(),
+                        status: ErrorCode::INVALID_CREDENTIALS->getHttpStatusCode(),
+                        errorCode: ErrorCode::INVALID_CREDENTIALS->value
                     ),
-                    401
+                    ErrorCode::INVALID_CREDENTIALS->getHttpStatusCode()
                 );
             }
 
@@ -145,16 +154,16 @@ final class EmailLoginAction extends AbstractAction
 
             if ($auth === null) {
                 $this->success = false;
-                $this->errorMessage = 'Authenticatable not found';
-                $this->errorClass = 'AuthenticatableNotFoundException';
+                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->message();
+                $this->errorType = ErrorType::USER_NOT_FOUND;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'Authenticatable not found',
-                        status: 404,
-                        errorCode: 'AUTHENTICATABLE_NOT_FOUND'
+                        message: ErrorCode::AUTHENTICATABLE_NOT_FOUND->message(),
+                        status: ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode(),
+                        errorCode: ErrorCode::AUTHENTICATABLE_NOT_FOUND->value
                     ),
-                    404
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()
                 );
             }
 
@@ -188,29 +197,29 @@ final class EmailLoginAction extends AbstractAction
         } catch (ValidationException $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
+            $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: $e->getMessage(),
-                    status: 422,
-                    errorCode: 'VALIDATION_ERROR',
+                    message: ErrorCode::VALIDATION_ERROR->message(),
+                    status: ErrorCode::VALIDATION_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::VALIDATION_ERROR->value,
                     errors: DataObject::from($e->errors()),
                 ),
-                422
+                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()
             );
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
+            $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'An error occurred during login',
-                    status: 500,
-                    errorCode: 'LOGIN_ERROR'
+                    message: ErrorCode::LOGIN_ERROR->message(),
+                    status: ErrorCode::LOGIN_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::LOGIN_ERROR->value
                 ),
-                500
+                ErrorCode::LOGIN_ERROR->getHttpStatusCode()
             );
         }
     }
@@ -235,11 +244,14 @@ final class EmailLoginAction extends AbstractAction
         }
 
         if (! $this->success) {
+            $errorType = $this->errorType ?? ErrorType::INVALID_CREDENTIALS;
+            $errorMessage = $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error');
+
             $this->logRepository->loginFailure(
                 modelClass: $this->modelClass ?? 'unknown',
                 email: $this->email ?? 'unknown',
-                error: $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error'),
-                errorClass: $this->errorClass ?? ($error !== null ? get_class($error) : 'UnknownException'),
+                error: $errorMessage,
+                errorType: $errorType,
             );
         }
     }

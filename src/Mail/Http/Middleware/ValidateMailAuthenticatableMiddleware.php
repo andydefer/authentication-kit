@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Http\Middleware;
 
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use AndyDefer\Nemesis\Services\CookieTokenStorageService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cookie;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -19,7 +22,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Ensures that the provided model type exists and implements the
  * MailAuthenticatable interface before allowing the request to proceed.
  */
-final class ValidateMailAuthenticatable
+final class ValidateMailAuthenticatableMiddleware
 {
     /**
      * Handles the incoming request and validates the model type.
@@ -30,6 +33,8 @@ final class ValidateMailAuthenticatable
      */
     public function handle(Request $request, Closure $next): Response
     {
+        CookieTokenStorageService::class;
+
         $modelType = $request->input('model_type');
 
         if ($modelType === null) {
@@ -66,10 +71,21 @@ final class ValidateMailAuthenticatable
         }
 
         app()->bind(MailAuthenticationInterface::class, function ($app) use ($modelType) {
-
             return MailAuthenticationService::for($modelType);
         });
 
-        return $next($request);
+        $response = $next($request);
+
+        $config = app(AuthenticationKitConfigInterface::class);
+
+        if ($config->shouldStoreTokenInCookie()) {
+            $queuedCookies = Cookie::getQueuedCookies();
+
+            foreach ($queuedCookies as $cookie) {
+                $response->headers->setCookie($cookie);
+            }
+        }
+
+        return $response;
     }
 }

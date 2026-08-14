@@ -16,7 +16,7 @@ use AndyDefer\AuthenticationKit\Mail\Actions\SendPasswordResetLinkAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\VerifyEmailAction;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
-use AndyDefer\AuthenticationKit\Mail\Http\Middleware\ValidateMailAuthenticatable;
+use AndyDefer\AuthenticationKit\Mail\Http\Middleware\ValidateMailAuthenticatableMiddleware;
 use AndyDefer\AuthenticationKit\Mail\Repositories\LogRepository;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use Illuminate\Routing\Router;
@@ -127,7 +127,7 @@ final class MailServiceProvider extends ServiceProvider
         // Middleware
         $this->app->make(Router::class)->aliasMiddleware(
             name: 'validate.mail.authenticatable',
-            class: ValidateMailAuthenticatable::class
+            class: ValidateMailAuthenticatableMiddleware::class
         );
     }
 

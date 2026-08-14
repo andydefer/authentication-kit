@@ -6,6 +6,8 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
@@ -29,7 +31,7 @@ final class ResetPasswordAction extends AbstractAction
 
     private ?string $errorMessage = null;
 
-    private ?string $errorClass = null;
+    private ?ErrorType $errorType = null;
 
     public function __construct(
         private readonly MailAuthenticationInterface $authService,
@@ -47,22 +49,24 @@ final class ResetPasswordAction extends AbstractAction
         if (! $record instanceof ResetPasswordRecord) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid record type',
-                    status: 500,
-                    errorCode: 'INVALID_RECORD_TYPE'
+                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
+                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
                 ),
-                500
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
             );
         }
 
         if ($record->password !== $record->password_confirmation) {
+            $this->errorType = ErrorType::VALIDATION_ERROR;
+
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Password confirmation does not match',
-                    status: 422,
-                    errorCode: 'PASSWORD_CONFIRMATION_MISMATCH'
+                    message: ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->message(),
+                    status: ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->getHttpStatusCode(),
+                    errorCode: ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->value
                 ),
-                422
+                ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->getHttpStatusCode()
             );
         }
 
@@ -77,16 +81,16 @@ final class ResetPasswordAction extends AbstractAction
 
             if (! $reset) {
                 $this->success = false;
-                $this->errorMessage = 'Invalid or expired reset OTP';
-                $this->errorClass = 'InvalidResetOtpException';
+                $this->errorMessage = ErrorCode::INVALID_RESET_OTP->message();
+                $this->errorType = ErrorType::INVALID_OTP;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'Invalid or expired reset OTP',
-                        status: 400,
-                        errorCode: 'INVALID_RESET_OTP'
+                        message: ErrorCode::INVALID_RESET_OTP->message(),
+                        status: ErrorCode::INVALID_RESET_OTP->getHttpStatusCode(),
+                        errorCode: ErrorCode::INVALID_RESET_OTP->value
                     ),
-                    400
+                    ErrorCode::INVALID_RESET_OTP->getHttpStatusCode()
                 );
             }
 
@@ -104,15 +108,15 @@ final class ResetPasswordAction extends AbstractAction
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
+            $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'An error occurred while resetting the password',
-                    status: 500,
-                    errorCode: 'RESET_PASSWORD_ERROR'
+                    message: ErrorCode::RESET_PASSWORD_ERROR->message(),
+                    status: ErrorCode::RESET_PASSWORD_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::RESET_PASSWORD_ERROR->value
                 ),
-                500
+                ErrorCode::RESET_PASSWORD_ERROR->getHttpStatusCode()
             );
         }
     }
@@ -138,10 +142,13 @@ final class ResetPasswordAction extends AbstractAction
             return;
         }
 
+        $errorType = $this->errorType ?? ErrorType::INVALID_OTP;
+        $errorMessage = $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error');
+
         $this->logRepository->logPasswordResetFailure(
             email: $this->email,
-            error: $this->errorMessage ?? 'Unknown error',
-            errorClass: $this->errorClass ?? 'UnknownException',
+            error: $errorMessage,
+            errorType: $errorType,
         );
     }
 }

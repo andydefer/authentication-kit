@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
+use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLoginRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
+use Illuminate\Testing\TestResponse;
 
 final class EmailLoginActionTest extends IntegrationTestCase
 {
@@ -15,11 +18,67 @@ final class EmailLoginActionTest extends IntegrationTestCase
     {
         parent::setUp();
 
+        // ✅ Définir la configuration
+        $this->app['config']->set('authentication-kit', [
+            'token_name' => 'authentication-kit',
+            'password_reset_rate_limit' => 3,
+            'email_verification_rate_limit' => 5,
+            'store_token_in_cookie' => false,
+        ]);
+
+        $this->app['config']->set('nemesis.web', [
+            'login_route' => '/login',
+            'dashboard_route' => '/dashboard',
+            'cookie_name' => 'nemesis_token',
+            'cookie_secure' => false,
+            'cookie_httponly' => false,
+            'cookie_samesite' => 'lax',
+        ]);
+
+        // ✅ Re-binder le service avec la config
+        $this->app->singleton(
+            AuthenticationKitConfigInterface::class,
+            function ($app) {
+                return new AuthenticationKitConfig(
+                    $app['config']
+                );
+            }
+        );
+
         $this->app['router']->middleware(['validate.mail.authenticatable'])->post('/api/login', action_route(
             EmailLoginRequest::class,
             EmailLoginAction::class
         ));
     }
+
+    private function refreshConfigService(): void
+    {
+        $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
+        $this->app->singleton(
+            AuthenticationKitConfigInterface::class,
+            function ($app) {
+                return new AuthenticationKitConfig(
+                    $app['config']
+                );
+            }
+        );
+    }
+
+    private function getCookieValue(TestResponse $response, string $cookieName): ?string
+    {
+        $cookies = $response->headers->getCookies();
+        foreach ($cookies as $cookie) {
+            if ($cookie->getName() === $cookieName) {
+                return $cookie->getValue();
+            }
+        }
+
+        return null;
+    }
+
+    // ============================================================================
+    // Tests existants
+    // ============================================================================
 
     public function test_login_auth_successfully(): void
     {
@@ -137,8 +196,6 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => bcrypt('Password123!'),
         ]);
 
-        // ✅ Supprimé le mock
-
         $payload = [
             'model_type' => TestUserMail::class,
             'email' => 'jane@example.com',
@@ -201,5 +258,167 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'status' => 400,
             'errorCode' => 'MODEL_TYPE_REQUIRED',
         ]);
+    }
+
+    // ============================================================================
+    // Tests cookie
+    // ============================================================================
+
+    public function test_login_stores_cookie_when_configured(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'Cookie User',
+            'email' => 'cookie@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'cookie@example.com',
+            'password' => 'Password123!',
+        ];
+
+        $response = $this->postJson('/api/login', $payload);
+
+        $response->assertStatus(200);
+
+        $cookieValue = $this->getCookieValue($response, 'nemesis_token');
+        $this->assertNotNull($cookieValue);
+        $this->assertNotEmpty($cookieValue);
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_login_does_not_store_cookie_when_not_configured(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'No Cookie User',
+            'email' => 'nocookie@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'nocookie@example.com',
+            'password' => 'Password123!',
+        ];
+
+        $response = $this->postJson('/api/login', $payload);
+
+        $response->assertStatus(200);
+
+        $cookieValue = $this->getCookieValue($response, 'nemesis_token');
+        $this->assertNull($cookieValue);
+    }
+
+    public function test_login_uses_configured_cookie_name(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'custom_cookie_name');
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'Custom Cookie User',
+            'email' => 'customcookie@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'customcookie@example.com',
+            'password' => 'Password123!',
+        ];
+
+        $response = $this->postJson('/api/login', $payload);
+
+        $response->assertStatus(200);
+
+        $cookieValue = $this->getCookieValue($response, 'custom_cookie_name');
+        $this->assertNotNull($cookieValue);
+        $this->assertNotEmpty($cookieValue);
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+    }
+
+    public function test_login_cookie_contains_valid_token(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $user = TestUserMail::create([
+            'name' => 'Token User',
+            'email' => 'tokenuser@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'tokenuser@example.com',
+            'password' => 'Password123!',
+        ];
+
+        $response = $this->postJson('/api/login', $payload);
+
+        $response->assertStatus(200);
+
+        $cookieValue = $this->getCookieValue($response, 'nemesis_token');
+        $this->assertNotNull($cookieValue);
+        $this->assertNotEmpty($cookieValue);
+        $this->assertIsString($cookieValue);
+        $this->assertGreaterThan(20, strlen($cookieValue));
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_login_with_cookie_and_web_middleware(): void
+    {
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $this->app['router']->middleware(['nemesis.web'])->get('/protected', function () {
+            return response()->json(['message' => 'Protected content']);
+        });
+
+        $user = TestUserMail::create([
+            'name' => 'Web User',
+            'email' => 'webuser@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'webuser@example.com',
+            'password' => 'Password123!',
+        ];
+
+        $loginResponse = $this->postJson('/api/login', $payload);
+        $loginResponse->assertStatus(200);
+
+        $cookieValue = $this->getCookieValue($loginResponse, 'nemesis_token');
+        $this->assertNotNull($cookieValue);
+        $this->assertNotEmpty($cookieValue);
+
+        // ✅ Utiliser withUnencryptedCookie au lieu de withCookie
+        $protectedResponse = $this->withUnencryptedCookie('nemesis_token', $cookieValue)
+            ->get('/protected');
+
+        $protectedResponse->assertStatus(200);
+        $protectedResponse->assertJson(['message' => 'Protected content']);
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
     }
 }

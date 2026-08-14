@@ -18,6 +18,7 @@
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_KEY" value="base64:Uc0/aCWxBra1K3A65koY7ARVUCEI2MY2fBrD06xvPuw="/>
+        
     </php>
     <source>
         <include>

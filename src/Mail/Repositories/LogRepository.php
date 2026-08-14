@@ -1,9 +1,12 @@
 <?php
 
+// src/Mail/Repositories/LogRepository.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Repositories;
 
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Enums\EventType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
@@ -54,14 +57,14 @@ final class LogRepository implements LogRepositoryInterface
     public function logRegistrationFailure(
         string $modelClass,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void {
         $payload = $this->buildBasePayload()
             ->merge([
                 'event' => EventType::USER_REGISTRATION_FAILED->value,
                 'model_type' => $modelClass,
                 'error' => $error,
-                'error_class' => $errorClass,
+                'error_type' => $errorType->value,
             ]);
 
         $this->logger->info(new LogDataRecord(
@@ -99,7 +102,7 @@ final class LogRepository implements LogRepositoryInterface
         string $modelClass,
         string $email,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void {
         $payload = $this->buildBasePayload()
             ->merge([
@@ -107,7 +110,7 @@ final class LogRepository implements LogRepositoryInterface
                 'model_type' => $modelClass,
                 'email' => $email,
                 'error' => $error,
-                'error_class' => $errorClass,
+                'error_type' => $errorType->value,
             ]);
 
         $this->logger->info(new LogDataRecord(
@@ -145,7 +148,7 @@ final class LogRepository implements LogRepositoryInterface
         string $modelClass,
         string $email,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void {
         $payload = $this->buildBasePayload()
             ->merge([
@@ -153,7 +156,7 @@ final class LogRepository implements LogRepositoryInterface
                 'model_type' => $modelClass,
                 'email' => $email,
                 'error' => $error,
-                'error_class' => $errorClass,
+                'error_type' => $errorType->value,
             ]);
 
         $this->logger->info(new LogDataRecord(
@@ -169,7 +172,7 @@ final class LogRepository implements LogRepositoryInterface
         string $email,
         bool $success,
         ?string $error = null,
-        ?string $errorClass = null,
+        ?ErrorType $errorType = null,
     ): void {
         $payload = $this->buildBasePayload()
             ->merge([
@@ -179,7 +182,7 @@ final class LogRepository implements LogRepositoryInterface
                 'email' => $email,
                 'success' => $success,
                 'error' => $error,
-                'error_class' => $errorClass,
+                'error_type' => $errorType?->value,
             ]);
 
         $this->logger->info(new LogDataRecord(
@@ -212,14 +215,14 @@ final class LogRepository implements LogRepositoryInterface
     public function logPasswordResetFailure(
         string $email,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void {
         $payload = $this->buildBasePayload()
             ->merge([
                 'event' => EventType::USER_PASSWORD_RESET_FAILED->value,
                 'email' => $email,
                 'error' => $error,
-                'error_class' => $errorClass,
+                'error_type' => $errorType->value,
             ]);
 
         $this->logger->info(new LogDataRecord(
@@ -259,7 +262,7 @@ final class LogRepository implements LogRepositoryInterface
         string $email,
         string $modelClass,
         string $error,
-        string $errorClass,
+        ErrorType $errorType,
     ): void {
         $payload = $this->buildBasePayload()
             ->merge([
@@ -267,7 +270,7 @@ final class LogRepository implements LogRepositoryInterface
                 'email' => $email,
                 'model_type' => $modelClass,
                 'error' => $error,
-                'error_class' => $errorClass,
+                'error_type' => $errorType->value,
             ]);
 
         $this->logger->info(new LogDataRecord(

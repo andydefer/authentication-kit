@@ -2,398 +2,438 @@
 
 ## Description
 
-Action qui gère la déconnexion d'un utilisateur en révoquant son token d'authentification. Valide le token, récupère l'utilisateur associé et effectue la déconnexion via le service.
+Action de déconnexion qui invalide le token d'authentification d'un utilisateur. Elle valide le token fourni, révoque le token via Nemesis, supprime automatiquement le cookie si configuré, et journalise le résultat de l'opération.
 
-## Endpoint
+## Hiérarchie / Implémentations
 
 ```
-POST /logout
+AbstractAction
+    └── EmailLogoutAction [final]
 ```
 
-## Définition de la route
+## Rôle principal
 
-```php
-Route::post('/logout', action_route(
-    EmailLogoutRequest::class,
-    EmailLogoutAction::class
-))->name('logout');
-```
+Cette action est le **point d'entrée principal** pour la déconnexion des utilisateurs. Elle orchestre :
 
-## Middleware
+1. La validation du token d'authentification
+2. La vérification de l'expiration du token
+3. La récupération de l'utilisateur associé
+4. La délégation à `MailAuthenticationService` pour la révocation
+5. La suppression automatique du cookie (si configuré)
+6. La journalisation du succès ou de l'échec
+7. La gestion des erreurs avec des codes standardisés
 
-| Middleware | Rôle |
+## Dépendances
+
+| Dépendance | Rôle |
 |------------|------|
-| `validate.mail.authenticatable` | Valide que le `model_type` existe et implémente `MailAuthenticatable` |
-| `nemesis.token` | Valide que le token est présent, valide et non expiré |
+| `NemesisInterface` | Recherche et révocation des tokens |
+| `LogRepositoryInterface` | Journalisation des événements |
 
----
+## API / Méthodes publiques
 
-## Structure de la requête
+### `handle(AbstractRecord $record): ResponseFactory`
 
-### Headers
+La méthode principale qui traite la requête de déconnexion.
 
-| Header | Valeur | Requis |
-|--------|--------|--------|
-| `Content-Type` | `application/json` | ✅ Oui |
-| `Accept` | `application/json` | ✅ Oui |
-| `Authorization` | `Bearer {token}` | ✅ Oui |
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$record` | `EmailLogoutAuthRecord` | Record contenant le token à révoquer |
 
-### Body (JSON)
+**Retourne :** `ResponseFactory` - Réponse HTTP :
+- Succès : `204 No Content`
+- Échec : `ErrorResponseData` avec code d'erreur et message
 
-| Champ | Type | Requis | Description |
-|-------|------|--------|-------------|
-| `model_type` | `string` | ✅ Oui | FQCN du modèle (ex: `App\\Models\\User`) |
-| `token` | `string` | ✅ Oui | Le token d'authentification à révoquer |
+**Exceptions :** Aucune exception n'est levée directement - toutes les erreurs retournent des réponses JSON structurées.
 
-**Note :** La Request valide `model_type` et `token`. Le token est également vérifié dans le header `Authorization`.
+### `before(AbstractRecord $record): void`
 
-### Exemple de requête
+Prépare l'action en validant le record et le modèle.
 
-```json
-{
-    "model_type": "App\\Models\\User",
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-}
-```
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$record` | `EmailLogoutAuthRecord` | Record contenant les données de la requête |
 
----
+**Exceptions :** 
+- `InvalidArgumentException` si le record n'est pas du type attendu
+- `InvalidArgumentException` si le modèle n'existe pas
+- `InvalidArgumentException` si le modèle n'implémente pas `MailAuthenticatable`
 
-## Structure de la réponse
+### `after(bool $success, ?Exception $error, AbstractRecord $record): void`
 
-### Succès (204 No Content)
+Journalise le résultat de la tentative de déconnexion.
 
-```json
-// Aucun contenu retourné
-```
-
-### Erreur - Token invalide (401 Unauthorized)
-
-```json
-{
-    "message": "Invalid token",
-    "status": 401,
-    "errorCode": "INVALID_TOKEN"
-}
-```
-
-### Erreur - Token expiré (401 Unauthorized)
-
-```json
-{
-    "message": "Token expired",
-    "status": 401,
-    "errorCode": "TOKEN_EXPIRED"
-}
-```
-
-### Erreur - Utilisateur non trouvé (404 Not Found)
-
-```json
-{
-    "message": "Authenticatable not found",
-    "status": 404,
-    "errorCode": "AUTHENTICATABLE_NOT_FOUND"
-}
-```
-
-### Erreur - Échec de la déconnexion (500 Internal Server Error)
-
-```json
-{
-    "message": "Logout failed",
-    "status": 500,
-    "errorCode": "LOGOUT_FAILED"
-}
-```
-
-### Erreur - Exception lors de la déconnexion (500 Internal Server Error)
-
-```json
-{
-    "message": "Logout failed: Database connection error",
-    "status": 500,
-    "errorCode": "LOGOUT_EXCEPTION"
-}
-```
-
----
-
-## Codes d'erreur
-
-| Code | Description |
-|------|-------------|
-| `INVALID_TOKEN` | Le token est invalide ou introuvable |
-| `TOKEN_EXPIRED` | Le token a expiré |
-| `AUTHENTICATABLE_NOT_FOUND` | Utilisateur associé au token non trouvé |
-| `LOGOUT_FAILED` | Échec de la déconnexion |
-| `LOGOUT_EXCEPTION` | Exception lors de la déconnexion |
-| `MODEL_NOT_FOUND` | Le modèle spécifié n'existe pas |
-| `INVALID_MODEL` | Le modèle n'implémente pas `MailAuthenticatable` |
-
----
-
-## Exemples d'appel
-
-### Exemple 1 : Laravel HTTP Client
-
-```php
-<?php
-
-declare(strict_types=1);
-
-use Illuminate\Support\Facades\Http;
-
-$token = session('auth_token');
-
-$response = Http::withHeaders([
-    'Authorization' => 'Bearer ' . $token,
-])->post('http://localhost/api/logout', [
-    'model_type' => 'App\\Models\\User',
-    'token' => $token,
-]);
-
-if ($response->successful()) {
-    // Succès - 204 No Content
-    session()->forget('auth_token');
-} else {
-    $error = $response->json();
-    echo 'Erreur: ' . ($error['message'] ?? 'Unknown error');
-}
-```
-
-### Exemple 2 : Application React (JavaScript)
-
-```javascript
-const logout = async () => {
-    const token = localStorage.getItem('auth_token');
-    
-    try {
-        const response = await fetch('http://localhost/api/logout', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-                model_type: 'App\\Models\\User',
-                token: token,
-            }),
-        });
-
-        if (response.ok) {
-            // Succès - 204 No Content
-            localStorage.removeItem('auth_token');
-            return { success: true };
-        } else {
-            const error = await response.json();
-            return { success: false, error: error };
-        }
-    } catch (error) {
-        return { success: false, error: error.message };
-    }
-};
-
-// Utilisation
-logout();
-```
-
-### Exemple 3 : Application Kotlin (Android)
-
-```kotlin
-import retrofit2.http.*
-
-interface ApiService {
-    @POST("api/logout")
-    suspend fun logout(
-        @Header("Authorization") authorization: String,
-        @Body request: LogoutRequest
-    ): Response<Unit>
-}
-
-data class LogoutRequest(
-    val model_type: String = "App\\Models\\User",
-    val token: String
-)
-
-// Utilisation dans un ViewModel
-class LogoutViewModel(
-    private val apiService: ApiService,
-    private val sessionManager: SessionManager
-) : ViewModel() {
-
-    private val _logoutState = MutableStateFlow<LogoutState>(LogoutState.Idle)
-    val logoutState: StateFlow<LogoutState> = _logoutState.asStateFlow()
-
-    suspend fun logout() {
-        _logoutState.value = LogoutState.Loading
-
-        val token = sessionManager.getToken()
-        if (token == null) {
-            _logoutState.value = LogoutState.Error("Token non trouvé")
-            return
-        }
-
-        try {
-            val response = apiService.logout(
-                authorization = "Bearer $token",
-                request = LogoutRequest(token = token)
-            )
-
-            if (response.isSuccessful) {
-                sessionManager.clearToken()
-                _logoutState.value = LogoutState.Success
-            } else {
-                val error = response.errorBody()?.string()?.let {
-                    parseErrorResponse(it)
-                }
-                _logoutState.value = LogoutState.Error(error?.message ?: "Erreur inconnue")
-            }
-        } catch (e: Exception) {
-            _logoutState.value = LogoutState.Error(e.message ?: "Erreur réseau")
-        }
-    }
-
-    private fun parseErrorResponse(json: String): ErrorResponse {
-        return gson.fromJson(json, ErrorResponse::class.java)
-    }
-}
-```
-
-### Exemple 4 : Dans un test Laravel
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace Tests\Feature;
-
-use Tests\TestCase;
-use App\Models\User;
-use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
-
-class LogoutTest extends TestCase
-{
-    public function test_user_can_logout(): void
-    {
-        // Arrange
-        $user = User::factory()->create();
-        $nemesis = app(NemesisInterface::class);
-        $token = $nemesis->create($user)->getPlainText();
-
-        // Act
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-        ])->postJson('/api/logout', [
-            'model_type' => User::class,
-            'token' => $token,
-        ]);
-
-        // Assert
-        $response->assertStatus(204);
-    }
-
-    public function test_logout_fails_with_invalid_token(): void
-    {
-        $response = $this->postJson('/api/logout', [
-            'model_type' => User::class,
-            'token' => 'invalid_token',
-        ]);
-
-        $response->assertStatus(401)
-            ->assertJson([
-                'message' => 'Invalid token',
-                'status' => 401,
-                'errorCode' => 'INVALID_TOKEN',
-            ]);
-    }
-}
-```
-
----
+| Paramètre | Type | Description |
+|-----------|------|-------------|
+| `$success` | `bool` | Indique si l'opération a réussi |
+| `$error` | `Exception|null` | L'exception si une erreur est survenue |
+| `$record` | `AbstractRecord` | Le record original de la requête |
 
 ## Flux d'exécution
 
 ```
-Requête POST /logout
+Requête entrante (EmailLogoutAuthRecord)
     ↓
-Middleware validate.mail.authenticatable
-    ├── Vérifie model_type existe
-    ├── Vérifie model_type implémente MailAuthenticatable
-    └── Échec → 400/500
+1. before() - Validation du record et du modèle
+    ├── Record invalide → InvalidArgumentException
+    ├── Modèle inexistant → InvalidArgumentException
+    └── Interface non implémentée → InvalidArgumentException
     ↓
-Middleware nemesis.token
-    ├── Vérifie token présent dans header
-    ├── Vérifie token valide
-    ├── Vérifie token non expiré
-    └── Échec → 401
+2. handle() - Traitement principal
+    ├── Validation du record
+    │   └── Invalide → 500 (INVALID_RECORD_TYPE)
+    ├── Recherche du token par hash
+    │   ├── Non trouvé → 401 (INVALID_TOKEN)
+    │   └── Trouvé → Continue
+    ├── Vérification de l'expiration
+    │   ├── Expiré → 401 (TOKEN_EXPIRED)
+    │   └── Valide → Continue
+    ├── Récupération de l'utilisateur
+    │   ├── tokenable manquant → 401 (INVALID_TOKEN)
+    │   └── Utilisateur non trouvé → 401 (AUTHENTICATABLE_NOT_FOUND)
+    ├── Appel à MailAuthenticationService::logout()
+    │   ├── Exception → 500 (LOGOUT_EXCEPTION)
+    │   ├── Échec → 500 (LOGOUT_FAILED)
+    │   └── Succès → Continue
+    └── Succès → 204 No Content
     ↓
-EmailLogoutRequest (Validation)
-    ├── model_type: required|string
-    ├── token: required|string
-    └── Échec → 422
-    ↓
-EmailLogoutAction
-    ├── before() - Valide le modèle
-    ├── handle()
-    │   ├── Recherche le token par hash
-    │   │   └── Échec → 401 (INVALID_TOKEN)
-    │   ├── Vérifie expiration du token
-    │   │   └── Échec → 401 (TOKEN_EXPIRED)
-    │   ├── Récupère l'utilisateur associé
-    │   │   └── Échec → 404 (AUTHENTICATABLE_NOT_FOUND)
-    │   ├── Appelle service->logout()
-    │   │   ├── beforeLogout() [HOOK]
-    │   │   ├── Révocation du token
-    │   │   └── afterLogout() [HOOK]
-    │   └── Retourne EmptyData (204)
-    └── after() - Journalisation
-    ↓
-Réponse 204 No Content
+3. after() - Journalisation
+    ├── Succès → logoutSuccess()
+    └── Échec → logoutFailure()
 ```
 
----
+## Cas d'utilisation
+
+### Cas 1 : Déconnexion standard
+
+**Problème** : L'utilisateur soumet son token pour se déconnecter.
+
+**Solution** : L'action révoque le token et retourne une réponse 204.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
+use AndyDefer\AuthenticationKit\Mail\Records\EmailLogoutAuthRecord;
+use App\Models\User;
+
+// Création du record avec le token
+$record = EmailLogoutAuthRecord::from([
+    'model_type' => User::class,
+    'token' => 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+]);
+
+// Exécution de l'action
+$action = app(EmailLogoutAction::class);
+$response = $action->handle($record);
+
+// Réponse : 204 No Content
+```
+
+### Cas 2 : Déconnexion avec suppression du cookie
+
+**Problème** : L'application web stocke le token dans un cookie.
+
+**Solution** : L'action révoque le token ET le middleware supprime le cookie.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+// Configuration
+'store_token_in_cookie' => true,
+
+// L'action révoque le token
+$action->handle($record); // 204
+
+// Le middleware ValidateMailAuthenticatableMiddleware supprime le cookie
+// Cookie: my_auth_token=deleted; expires=Thu, 01 Jan 1970 00:00:00 GMT
+```
+
+### Cas 3 : Token invalide ou expiré
+
+**Problème** : L'utilisateur soumet un token déjà révoqué ou expiré.
+
+**Solution** : L'action retourne une erreur 401 appropriée.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+// Token inexistant
+$record = EmailLogoutAuthRecord::from([
+    'model_type' => User::class,
+    'token' => 'invalid-token-123',
+]);
+
+$response = $action->handle($record);
+// 401 - "Invalid token"
+
+// Token expiré
+// Le token en base a expires_at < now()
+$response = $action->handle($record);
+// 401 - "Token has expired"
+```
+
+### Cas 4 : Utilisateur supprimé
+
+**Problème** : L'utilisateur associé au token a été supprimé (soft delete).
+
+**Solution** : L'action retourne une erreur 401 car l'utilisateur n'est pas trouvé.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+// L'utilisateur a été soft-deleted
+$user->delete();
+
+$record = EmailLogoutAuthRecord::from([
+    'model_type' => User::class,
+    'token' => $plainToken,
+]);
+
+$response = $action->handle($record);
+// 401 - "Authenticatable not found"
+```
 
 ## Gestion des erreurs
 
-| Situation | Code | Message |
-|-----------|------|---------|
-| `model_type` manquant | 400 | `model_type is required` |
-| `model_type` invalide | 500 | `Model X does not exist` |
-| Modèle non compatible | 500 | `Model X must implement MailAuthenticatable` |
-| Token manquant | 401 | Erreur du middleware `nemesis.token` |
-| Token invalide | 401 | `Invalid token` |
-| Token expiré | 401 | `Token expired` |
-| Utilisateur non trouvé | 404 | `Authenticatable not found` |
-| Échec déconnexion | 500 | `Logout failed` |
-| Exception déconnexion | 500 | `Logout failed: {message}` |
+| Situation | Code HTTP | ErrorCode | Message |
+|-----------|-----------|-----------|---------|
+| Record invalide | 500 | `INVALID_RECORD_TYPE` | `Invalid record type` |
+| Token non trouvé | 401 | `INVALID_TOKEN` | `Invalid token` |
+| Token expiré | 401 | `TOKEN_EXPIRED` | `Token has expired` |
+| Tokenable manquant | 401 | `INVALID_TOKEN` | `Invalid token` |
+| Utilisateur non trouvé | 401 | `AUTHENTICATABLE_NOT_FOUND` | `Authenticatable not found` |
+| Exception lors de la révocation | 500 | `LOGOUT_EXCEPTION` | `An error occurred during logout: {message}` |
+| Échec de la révocation | 500 | `LOGOUT_FAILED` | `Logout failed` |
 
----
+## Validation en amont
+
+L'action **délègue** la validation à `before()` qui vérifie :
+
+1. Le record est de type `EmailLogoutAuthRecord`
+2. La classe du modèle existe
+3. Le modèle implémente `MailAuthenticatable`
+
+```php
+<?php
+
+// ✅ Valide
+$record = EmailLogoutAuthRecord::from([
+    'model_type' => User::class, // User implémente MailAuthenticatable
+    'token' => 'token-123',
+]);
+
+// ❌ Invalide - Record incorrect
+$record = EmailRegisterAuthRecord::from([...]);
+// InvalidArgumentException: Invalid record type
+
+// ❌ Invalide - Modèle inexistant
+$record = EmailLogoutAuthRecord::from([
+    'model_type' => 'NonExistentClass',
+    'token' => 'token-123',
+]);
+// InvalidArgumentException: Model NonExistentClass does not exist
+
+// ❌ Invalide - Interface non implémentée
+$record = EmailLogoutAuthRecord::from([
+    'model_type' => stdClass::class,
+    'token' => 'token-123',
+]);
+// InvalidArgumentException: Model stdClass must implement MailAuthenticatable
+```
 
 ## Intégration
 
-### Dépendances de l'Action
+### Avec le middleware
 
-| Dépendance | Rôle |
-|------------|------|
-| `NemesisInterface` | Recherche et révocation du token |
-| `LogRepositoryInterface` | Journalisation des événements |
+```php
+<?php
 
-### Appel au service
+declare(strict_types=1);
 
-L'Action appelle `MailAuthenticationService::logout()` qui orchestre :
-- Récupération du token par hash
-- Révocation du token via Nemesis
-- Logging des succès/échecs
-- Hooks `beforeLogout()` et `afterLogout()`
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
+use AndyDefer\AuthenticationKit\Mail\Requests\EmailLogoutRequest;
 
----
+// Le middleware validate.mail.authenticatable valide model_type
+Route::middleware(['validate.mail.authenticatable'])->post('/api/logout', action_route(
+    EmailLogoutRequest::class,
+    EmailLogoutAction::class
+));
+```
+
+### Avec l'authentification Bearer
+
+```php
+<?php
+
+declare(strict_types=1);
+
+// Requête
+POST /api/logout
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+
+// Corps
+{
+    "model_type": "App\\Models\\User",
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+}
+
+// Réponse (succès)
+HTTP/1.1 204 No Content
+```
+
+### Avec les tests
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
+
+// 1. Création d'un utilisateur et login pour obtenir un token
+$user = TestUserMail::create([
+    'name' => 'Test User',
+    'email' => 'test@example.com',
+    'password' => bcrypt('Password123!'),
+]);
+
+$loginPayload = [
+    'model_type' => TestUserMail::class,
+    'email' => 'test@example.com',
+    'password' => 'Password123!',
+];
+
+$loginResponse = $this->postJson('/api/login', $loginPayload);
+$token = $loginResponse->json('token');
+
+// 2. Déconnexion
+$logoutPayload = [
+    'model_type' => TestUserMail::class,
+    'token' => $token,
+];
+
+$logoutResponse = $this->postJson('/api/logout', $logoutPayload, [
+    'Authorization' => 'Bearer '.$token,
+]);
+
+$logoutResponse->assertStatus(204);
+
+// 3. Vérification que le token est révoqué
+$meResponse = $this->postJson('/api/me', [
+    'model_type' => TestUserMail::class,
+], [
+    'Authorization' => 'Bearer '.$token,
+]);
+
+$meResponse->assertStatus(401);
+$meResponse->assertJson(['errorCode' => 'UNAUTHENTICATED']);
+```
+
+## Performance
+
+- **Complexité** : O(1) - requêtes DB optimisées
+- **Hash du token** : SHA-256 en O(1)
+- **Recherche du token** : Index sur `token_hash`
+- **Révocation** : Mise à jour d'un enregistrement
+- **Logs** : Écriture asynchrone via LogRepository
+- **Mémoire** : Allocation minimale
+
+## Compatibilité
+
+| Version | Support | Détails |
+|---------|---------|---------|
+| PHP 8.1+ | ✅ Complet | Types, énumérations |
+| PHP 8.0 | ✅ Complet | Support complet |
+| Laravel 12 | ✅ Complet | Framework supporté |
+| Laravel 13 | ✅ Complet | Framework supporté |
+| Laravel 14 | ✅ Complet | Framework supporté |
+| Laravel 15 | ✅ Complet | Framework supporté |
+
+## Exemple complet
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
+use AndyDefer\AuthenticationKit\Mail\Records\EmailLogoutAuthRecord;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
+
+class LogoutController extends Controller
+{
+    public function logout(Request $request, EmailLogoutAction $action)
+    {
+        // 1. Récupération du token
+        $token = $request->bearerToken();
+        
+        if ($token === null) {
+            return response()->json([
+                'error' => 'Token required'
+            ], 401);
+        }
+
+        // 2. Validation du model_type
+        $validated = $request->validate([
+            'model_type' => 'required|string',
+        ]);
+
+        // 3. Construction du record
+        $record = EmailLogoutAuthRecord::from([
+            'model_type' => $validated['model_type'],
+            'token' => $token,
+        ]);
+
+        // 4. Exécution de l'action
+        $response = $action->handle($record);
+
+        // 5. Retour de la réponse
+        return $response;
+    }
+}
+
+// Exemple d'utilisation dans une route API
+Route::post('/api/logout', [LogoutController::class, 'logout'])
+    ->middleware(['validate.mail.authenticatable']);
+
+// Requête : POST /api/logout
+// Headers : Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+// Body : { "model_type": "App\\Models\\User" }
+//
+// Réponse (succès) : 204 No Content
+//
+// Réponse (échec - token invalide) :
+// {
+//     "message": "Invalid token",
+//     "status": 401,
+//     "errorCode": "INVALID_TOKEN"
+// }
+//
+// Réponse (échec - token expiré) :
+// {
+//     "message": "Token has expired",
+//     "status": 401,
+//     "errorCode": "TOKEN_EXPIRED"
+// }
+```
 
 ## Voir aussi
 
-- `EmailLoginAction` - Connexion d'un utilisateur
-- `EmailRegisterAction` - Inscription d'un utilisateur
-- `MailAuthenticationService` - Service d'authentification générique
-- `EmailLogoutRequest` - Validation de la requête
-- `EmptyData` - Structure de la réponse (204)
+- `EmailLogoutAuthRecord` - Record de données pour la déconnexion
+- `ErrorResponseData` - Réponse d'erreur
+- `ErrorCode` - Codes d'erreur standardisés
+- `ErrorType` - Types d'erreur pour les logs
+- `MailAuthenticationService::logout()` - Service sous-jacent
+- `NemesisInterface` - Gestion des tokens
+- `ValidateMailAuthenticatableMiddleware` - Middleware de validation

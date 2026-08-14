@@ -6,6 +6,8 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
@@ -34,6 +36,8 @@ final class EmailLogoutAction extends AbstractAction
     private bool $success = false;
 
     private ?string $errorMessage = null;
+
+    private ?ErrorType $errorType = null;
 
     public function __construct(
         private readonly NemesisInterface $nemesis,
@@ -76,15 +80,16 @@ final class EmailLogoutAction extends AbstractAction
     {
         if (! $record instanceof EmailLogoutAuthRecord) {
             $this->success = false;
-            $this->errorMessage = 'Invalid record type';
+            $this->errorMessage = ErrorCode::INVALID_RECORD_TYPE->message();
+            $this->errorType = ErrorType::INVALID_RECORD_TYPE;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid record type',
-                    status: 500,
-                    errorCode: 'INVALID_RECORD_TYPE'
+                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
+                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
                 ),
-                500
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
             );
         }
 
@@ -99,29 +104,31 @@ final class EmailLogoutAction extends AbstractAction
 
         if ($tokenModel === null) {
             $this->success = false;
-            $this->errorMessage = 'Invalid token';
+            $this->errorMessage = ErrorCode::INVALID_TOKEN->message();
+            $this->errorType = ErrorType::INVALID_TOKEN;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid token',
-                    status: 401,
-                    errorCode: 'INVALID_TOKEN'
+                    message: ErrorCode::INVALID_TOKEN->message(),
+                    status: ErrorCode::INVALID_TOKEN->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_TOKEN->value
                 ),
-                401
+                ErrorCode::INVALID_TOKEN->getHttpStatusCode()
             );
         }
 
         if ($tokenModel->isExpired()) {
             $this->success = false;
-            $this->errorMessage = 'Token expired';
+            $this->errorMessage = ErrorCode::TOKEN_EXPIRED->message();
+            $this->errorType = ErrorType::TOKEN_EXPIRED;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Token expired',
-                    status: 401,
-                    errorCode: 'TOKEN_EXPIRED'
+                    message: ErrorCode::TOKEN_EXPIRED->message(),
+                    status: ErrorCode::TOKEN_EXPIRED->getHttpStatusCode(),
+                    errorCode: ErrorCode::TOKEN_EXPIRED->value
                 ),
-                401
+                ErrorCode::TOKEN_EXPIRED->getHttpStatusCode()
             );
         }
 
@@ -130,15 +137,16 @@ final class EmailLogoutAction extends AbstractAction
 
         if ($tokenableType === null || $tokenableId === null) {
             $this->success = false;
-            $this->errorMessage = 'Invalid token';
+            $this->errorMessage = ErrorCode::INVALID_TOKEN->message();
+            $this->errorType = ErrorType::INVALID_TOKEN;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid token',
-                    status: 401,
-                    errorCode: 'INVALID_TOKEN'
+                    message: ErrorCode::INVALID_TOKEN->message(),
+                    status: ErrorCode::INVALID_TOKEN->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_TOKEN->value
                 ),
-                401
+                ErrorCode::INVALID_TOKEN->getHttpStatusCode()
             );
         }
 
@@ -146,15 +154,16 @@ final class EmailLogoutAction extends AbstractAction
 
         if ($auth === null) {
             $this->success = false;
-            $this->errorMessage = 'Authenticatable not found';
+            $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->message();
+            $this->errorType = ErrorType::USER_NOT_FOUND;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Authenticatable not found',
-                    status: 404,
-                    errorCode: 'AUTHENTICATABLE_NOT_FOUND'
+                    message: ErrorCode::AUTHENTICATABLE_NOT_FOUND->message(),
+                    status: ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode(),
+                    errorCode: ErrorCode::AUTHENTICATABLE_NOT_FOUND->value
                 ),
-                404
+                ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()
             );
         }
 
@@ -165,28 +174,30 @@ final class EmailLogoutAction extends AbstractAction
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
+            $this->errorType = ErrorType::TOKEN_REVOKE_FAILED;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Logout failed: '.$e->getMessage(),
-                    status: 500,
-                    errorCode: 'LOGOUT_EXCEPTION'
+                    message: ErrorCode::LOGOUT_EXCEPTION->message().': '.$e->getMessage(),
+                    status: ErrorCode::LOGOUT_EXCEPTION->getHttpStatusCode(),
+                    errorCode: ErrorCode::LOGOUT_EXCEPTION->value
                 ),
-                500
+                ErrorCode::LOGOUT_EXCEPTION->getHttpStatusCode()
             );
         }
 
         if (! $result) {
             $this->success = false;
-            $this->errorMessage = 'Logout failed';
+            $this->errorMessage = ErrorCode::LOGOUT_FAILED->message();
+            $this->errorType = ErrorType::TOKEN_REVOKE_FAILED;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Logout failed',
-                    status: 500,
-                    errorCode: 'LOGOUT_FAILED'
+                    message: ErrorCode::LOGOUT_FAILED->message(),
+                    status: ErrorCode::LOGOUT_FAILED->getHttpStatusCode(),
+                    errorCode: ErrorCode::LOGOUT_FAILED->value
                 ),
-                500
+                ErrorCode::LOGOUT_FAILED->getHttpStatusCode()
             );
         }
 
@@ -215,17 +226,19 @@ final class EmailLogoutAction extends AbstractAction
                 modelClass: $this->modelClass,
                 email: $this->email ?? 'unknown',
             );
+
+            return;
         }
 
         if (! $this->success) {
+            $errorType = $this->errorType ?? ErrorType::TOKEN_REVOKE_FAILED;
             $errorMessage = $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error');
-            $errorClass = $error !== null ? get_class($error) : 'NoException';
 
             $this->logRepository->logoutFailure(
                 modelClass: $this->modelClass ?? 'unknown',
                 email: $this->email ?? 'unknown',
                 error: $errorMessage,
-                errorClass: $errorClass,
+                errorType: $errorType,
             );
         }
     }

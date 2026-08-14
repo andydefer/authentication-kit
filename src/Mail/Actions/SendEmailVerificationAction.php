@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\EmailVerificationSentData;
@@ -188,11 +189,14 @@ final class SendEmailVerificationAction extends AbstractAction
             return;
         }
 
+        $errorType = $this->errorType ?? ErrorType::INVALID_OTP;
+        $errorMessage = $this->errorMessage ?? ($error !== null ? $error->getMessage() : 'Unknown error');
+
         $this->logRepository->logVerificationFailure(
             email: $this->email,
             modelClass: $this->modelType,
-            error: $this->errorMessage ?? 'Unknown error',
-            errorClass: $this->errorClass ?? 'UnknownException',
+            error: $errorMessage,
+            errorType: $errorType,
         );
     }
 
