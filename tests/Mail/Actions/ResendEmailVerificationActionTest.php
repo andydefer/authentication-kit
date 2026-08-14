@@ -136,19 +136,6 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response->assertJsonValidationErrors(['auth_id']);
     }
 
-    public function test_resend_email_verification_returns_422_when_auth_id_is_not_integer(): void
-    {
-        $payload = [
-            'model_type' => TestUserMail::class,
-            'auth_id' => 'not-an-integer',
-        ];
-
-        $response = $this->postJson('/api/email/resend', $payload);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['auth_id']);
-    }
-
     // ============================================================================
     // Tests - Erreurs métier
     // ============================================================================

@@ -14,7 +14,7 @@ final class SendEmailVerificationRequest extends AbstractRequest
     {
         return [
             'model_type' => ['required', 'string'],
-            'auth_id' => ['required', 'integer'],
+            'auth_id' => ['required'],
         ];
     }
 
@@ -31,7 +31,6 @@ final class SendEmailVerificationRequest extends AbstractRequest
         return [
             'model_type.required' => 'model_type is required',
             'auth_id.required' => 'auth_id is required',
-            'auth_id.integer' => 'auth_id must be an integer',
         ];
     }
 }

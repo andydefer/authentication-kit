@@ -14,15 +14,15 @@ final class ResendEmailVerificationRequest extends AbstractRequest
     {
         return [
             'model_type' => ['required', 'string'],
-            'auth_id' => ['required', 'integer'],
+            'auth_id' => ['required'], // ✅ string pour supporter int ou UUID
         ];
     }
 
     public function getRecord(): AbstractRecord
     {
         return ResendEmailVerificationRecord::from([
-            'modelType' => $this->input('model_type'),
-            'authId' => (int) $this->input('auth_id'),
+            'model_type' => $this->input('model_type'),
+            'auth_id' => $this->input('auth_id'),
         ]);
     }
 
@@ -31,7 +31,6 @@ final class ResendEmailVerificationRequest extends AbstractRequest
         return [
             'model_type.required' => 'model_type is required',
             'auth_id.required' => 'auth_id is required',
-            'auth_id.integer' => 'auth_id must be an integer',
         ];
     }
 }

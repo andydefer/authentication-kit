@@ -15,6 +15,6 @@ final class SendEmailVerificationRecord extends AbstractRecord
 {
     public function __construct(
         public readonly string $model_type,
-        public readonly int $auth_id,
+        public readonly string $auth_id,
     ) {}
 }
