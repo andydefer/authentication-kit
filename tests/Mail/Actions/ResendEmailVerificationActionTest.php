@@ -136,11 +136,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $response->assertJsonValidationErrors(['auth_id']);
     }
 
-    // ============================================================================
-    // Tests - Erreurs métier
-    // ============================================================================
-
-    public function test_resend_email_verification_returns_500_when_model_class_does_not_exist(): void
+    public function test_resend_email_verification_returns_422_when_model_class_does_not_exist(): void
     {
         $payload = [
             'model_type' => 'NonExistentClass',
@@ -149,10 +145,11 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/email/resend', $payload);
 
-        $response->assertStatus(500);
+        // ✅ La validation échoue avant d'arriver à l'action
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['model_type']);
         $response->assertJson([
-            'errorCode' => 'MODEL_NOT_FOUND',
-            'message' => 'Model does not exist',
+            'message' => "The model class 'NonExistentClass' does not exist.",
         ]);
     }
 
@@ -189,7 +186,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         $this->assertContains($response2->status(), [200, 500]);
     }
 
-    public function test_resend_email_verification_returns_500_when_exception_thrown(): void
+    public function test_resend_email_verification_returns_422_when_exception_thrown_due_to_invalid_model(): void
     {
         $payload = [
             'model_type' => 'NonExistentClass',
@@ -198,10 +195,11 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/email/resend', $payload);
 
-        $response->assertStatus(500);
+        // ✅ La validation échoue avant d'arriver à l'action
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['model_type']);
         $response->assertJson([
-            'errorCode' => 'MODEL_NOT_FOUND',
-            'message' => 'Model does not exist',
+            'message' => "The model class 'NonExistentClass' does not exist.",
         ]);
     }
 

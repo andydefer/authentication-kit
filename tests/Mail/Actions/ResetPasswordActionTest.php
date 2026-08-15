@@ -406,12 +406,16 @@ final class ResetPasswordActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/reset-password', $payload);
 
-        // ✅ Modèle invalide → ValidOtpRule échoue → 422
+        // ✅ Modèle invalide → ValidModelTypeRule échoue → 422
         $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['model_type', 'token']);
         $response->assertJson([
-            'message' => 'The specified model type does not exist.',
+            'message' => "The model class 'InvalidModel' does not exist. (and 1 more error)",
+            'errors' => [
+                'model_type' => ["The model class 'InvalidModel' does not exist."],
+                'token' => ['The specified model type does not exist.'],
+            ],
         ]);
-        $response->assertJsonValidationErrors(['token']);
     }
 
     // ============================================================================

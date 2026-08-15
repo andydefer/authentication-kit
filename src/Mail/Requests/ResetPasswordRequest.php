@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Requests;
 
 use AndyDefer\Actions\Http\Requests\AbstractRequest;
 use AndyDefer\AuthenticationKit\Mail\Records\ResetPasswordRecord;
+use AndyDefer\AuthenticationKit\Mail\Rules\ValidModelTypeRule;
 use AndyDefer\AuthenticationKit\Mail\Rules\ValidOtpRule;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 
@@ -16,7 +17,7 @@ final class ResetPasswordRequest extends AbstractRequest
     public function rules(): array
     {
         return [
-            'model_type' => ['required', 'string'],
+            'model_type' => ['required', 'string', new ValidModelTypeRule],
             'email' => ['required', 'email'],
             'token' => ['required', 'string', new ValidOtpRule(self::PASSWORD_RESET_PURPOSE)],
             'password' => ['required', 'string', 'min:8', 'confirmed'],

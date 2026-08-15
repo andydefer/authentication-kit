@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Requests;
 
 use AndyDefer\Actions\Http\Requests\AbstractRequest;
 use AndyDefer\AuthenticationKit\Mail\Records\ResendEmailVerificationRecord;
+use AndyDefer\AuthenticationKit\Mail\Rules\ValidModelTypeRule;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 
 final class ResendEmailVerificationRequest extends AbstractRequest
@@ -13,8 +14,8 @@ final class ResendEmailVerificationRequest extends AbstractRequest
     public function rules(): array
     {
         return [
-            'model_type' => ['required', 'string'],
-            'auth_id' => ['required'], // ✅ string pour supporter int ou UUID
+            'model_type' => ['required', 'string', new ValidModelTypeRule],
+            'auth_id' => ['required'],
         ];
     }
 

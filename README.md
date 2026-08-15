@@ -752,7 +752,8 @@ Cookie: auth_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **Requête :**
 ```json
 {
-    "email": "john@example.com"
+    "email": "john@example.com",
+    "model_type": "App\\Models\\User",
 }
 ```
 
@@ -1815,6 +1816,7 @@ class AuthService
     {
         $response = Http::post(self::BASE_URL . '/forgot-password', [
             'email' => $email,
+            'model_type' => self::MODEL_TYPE,
         ]);
 
         return $response->json();

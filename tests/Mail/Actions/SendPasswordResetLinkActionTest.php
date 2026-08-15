@@ -67,6 +67,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         $user = $this->createUser();
 
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => $user->email,
         ];
 
@@ -92,6 +93,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
     public function test_send_password_reset_link_returns_200_even_if_user_not_found(): void
     {
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => 'nonexistent@example.com',
         ];
 
@@ -109,6 +111,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         $user = $this->createUser();
 
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => $user->email,
         ];
 
@@ -142,7 +145,9 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
 
     public function test_send_password_reset_link_returns_422_when_email_is_missing(): void
     {
-        $payload = [];
+        $payload = [
+            'model_type' => TestUserMail::class,
+        ];
 
         $response = $this->postJson('/api/password/forgot', $payload);
 
@@ -153,6 +158,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
     public function test_send_password_reset_link_returns_422_when_email_invalid_format(): void
     {
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => 'invalid-email',
         ];
 
@@ -171,6 +177,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         $user = $this->createUser();
 
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => strtoupper($user->email),
         ];
 
@@ -199,6 +206,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         $user = $this->createUser();
 
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => '  '.$user->email.'  ',
         ];
 
@@ -215,6 +223,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
     public function test_send_password_reset_link_returns_200_when_model_type_not_needed(): void
     {
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => 'john@example.com',
         ];
 
@@ -236,6 +245,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         $user = $this->createUser();
 
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => $user->email,
         ];
 
@@ -268,6 +278,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         ]);
 
         $payload = [
+            'model_type' => TestUserMail::class,
             'email' => $user->email,
         ];
 
@@ -288,5 +299,37 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
 
         $otps = $this->otpService->getAllFor($user, $purpose);
         $this->assertCount(1, $otps);
+    }
+
+    // ============================================================================
+    // Tests - Validation model_type
+    // ============================================================================
+
+    public function test_send_password_reset_link_returns_422_when_model_type_is_missing(): void
+    {
+        $payload = [
+            'email' => 'john@example.com',
+        ];
+
+        $response = $this->postJson('/api/password/forgot', $payload);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['model_type']);
+    }
+
+    public function test_send_password_reset_link_returns_422_when_model_type_is_invalid(): void
+    {
+        $payload = [
+            'model_type' => 'Invalid\\Model\\Class',
+            'email' => 'john@example.com',
+        ];
+
+        $response = $this->postJson('/api/password/forgot', $payload);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['model_type']);
+        $response->assertJson([
+            'message' => 'The model class \'Invalid\\Model\\Class\' does not exist.',
+        ]);
     }
 }

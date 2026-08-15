@@ -15,5 +15,6 @@ final class SendPasswordResetLinkRecord extends AbstractRecord
 {
     public function __construct(
         public readonly string $email,
+        public readonly string $model_type
     ) {}
 }

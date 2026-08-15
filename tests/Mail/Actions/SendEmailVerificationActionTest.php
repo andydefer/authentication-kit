@@ -145,7 +145,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
     // Tests - Erreurs métier
     // ============================================================================
 
-    public function test_send_email_verification_returns_500_when_model_class_does_not_exist(): void
+    public function test_send_email_verification_returns_422_when_model_class_does_not_exist(): void
     {
         $payload = [
             'model_type' => 'NonExistentClass',
@@ -154,10 +154,10 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/email/verification', $payload);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['model_type']);
         $response->assertJson([
-            'errorCode' => 'MODEL_NOT_FOUND',
-            'message' => 'Model NonExistentClass does not exist',
+            'message' => "The model class 'NonExistentClass' does not exist.",
         ]);
     }
 

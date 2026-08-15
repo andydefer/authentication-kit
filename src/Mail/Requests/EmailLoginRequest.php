@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Requests;
 
 use AndyDefer\Actions\Http\Requests\AbstractRequest;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailLoginAuthRecord;
+use AndyDefer\AuthenticationKit\Mail\Rules\ValidModelTypeRule;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 
@@ -14,7 +15,7 @@ final class EmailLoginRequest extends AbstractRequest
     public function rules(): array
     {
         return [
-            'model_type' => ['required', 'string'],
+            'model_type' => ['required', 'string', new ValidModelTypeRule],
             'email' => ['nullable'],
         ];
     }

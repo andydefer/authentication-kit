@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "3f16fe42d52a1b760f168125f2f081f4",
+    "content-hash": "94d464d7545bd22986d83105ad36aa18",
     "packages": [
         {
             "name": "andydefer/algo-kit",
@@ -525,16 +525,16 @@
         },
         {
             "name": "andydefer/laravel-nemesis",
-            "version": "v1.13.1",
+            "version": "v1.14.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-nemesis.git",
-                "reference": "cece468e5880e5965b689c372e2fb96f7c1a7e45"
+                "reference": "0e0883b5a6a1a7617bc12ed7809a87890d15f1e3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-nemesis/zipball/cece468e5880e5965b689c372e2fb96f7c1a7e45",
-                "reference": "cece468e5880e5965b689c372e2fb96f7c1a7e45",
+                "url": "https://api.github.com/repos/andydefer/laravel-nemesis/zipball/0e0883b5a6a1a7617bc12ed7809a87890d15f1e3",
+                "reference": "0e0883b5a6a1a7617bc12ed7809a87890d15f1e3",
                 "shasum": ""
             },
             "require": {
@@ -574,26 +574,26 @@
             "description": "Nemesis: Multi-model token-based authentication for Laravel",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-nemesis/issues",
-                "source": "https://github.com/andydefer/laravel-nemesis/tree/v1.13.1"
+                "source": "https://github.com/andydefer/laravel-nemesis/tree/v1.14.0"
             },
-            "time": "2026-08-14T07:42:05+00:00"
+            "time": "2026-08-14T17:40:12+00:00"
         },
         {
             "name": "andydefer/laravel-notification",
-            "version": "v1.3.46",
+            "version": "v1.4.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-notification.git",
-                "reference": "00a6d610306d43e461d6a691adecf557f72fe17d"
+                "reference": "b52a4418f2f27a6c2a6c7a4e89cb02eb570be1a2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-notification/zipball/00a6d610306d43e461d6a691adecf557f72fe17d",
-                "reference": "00a6d610306d43e461d6a691adecf557f72fe17d",
+                "url": "https://api.github.com/repos/andydefer/laravel-notification/zipball/b52a4418f2f27a6c2a6c7a4e89cb02eb570be1a2",
+                "reference": "b52a4418f2f27a6c2a6c7a4e89cb02eb570be1a2",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-task": "^4.11.1",
+                "andydefer/laravel-task": "^4.11.2",
                 "php": "^8.2"
             },
             "require-dev": {
@@ -631,9 +631,9 @@
             "description": "Extensible polymorphic notification system for Laravel with multi-channel support (Mail, Database, SMS, WhatsApp, etc.)",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-notification/issues",
-                "source": "https://github.com/andydefer/laravel-notification/tree/v1.3.46"
+                "source": "https://github.com/andydefer/laravel-notification/tree/v1.4.0"
             },
-            "time": "2026-08-08T18:52:32+00:00"
+            "time": "2026-08-14T07:45:28+00:00"
         },
         {
             "name": "andydefer/laravel-otp",
