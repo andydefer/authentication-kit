@@ -11,6 +11,7 @@ use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\NotificationMessageRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\LaravelNotification\Builders\NotifiableBuilder;
@@ -295,9 +296,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $otp = $this->otpService->create($user, $purpose);
 
         $this->sendNotification(
-            email: $user->email,
-            subject: 'Password Reset Code',
-            body: "Your password reset code is: {$otp->code}"
+            $this->buildPasswordResetNotification($user->email, $otp->code)
         );
 
         $this->logRepository->logPasswordResetLinkSent(
@@ -397,9 +396,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         );
 
         $this->sendNotification(
-            email: $authenticatable->email,
-            subject: 'Email Verification Code',
-            body: "Your email verification code is: {$otp->code}"
+            $this->buildEmailVerificationNotification($authenticatable->email, $otp->code)
         );
 
         return true;
@@ -623,21 +620,63 @@ class MailAuthenticationService implements MailAuthenticationInterface
     }
 
     // ========================================================================
+    // MÉTHODES DE NOTIFICATION - EXTENSIBLES
+    // ========================================================================
+
+    /**
+     * Build the password reset notification message.
+     *
+     * Override this method to customize the password reset email.
+     *
+     * @param  string  $email  The recipient email address
+     * @param  string  $otp  The OTP code
+     * @return NotificationMessageRecord The notification message record
+     */
+    protected function buildPasswordResetNotification(string $email, string $otp): NotificationMessageRecord
+    {
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => 'Password Reset Code',
+            'body' => "Your password reset code is: {$otp}",
+        ]);
+    }
+
+    /**
+     * Build the email verification notification message.
+     *
+     * Override this method to customize the email verification email.
+     *
+     * @param  string  $email  The recipient email address
+     * @param  string  $otp  The OTP code
+     * @return NotificationMessageRecord The notification message record
+     */
+    protected function buildEmailVerificationNotification(string $email, string $otp): NotificationMessageRecord
+    {
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => 'Email Verification Code',
+            'body' => "Your email verification code is: {$otp}",
+        ]);
+    }
+
+    // ========================================================================
     // MÉTHODES PRIVÉES
     // ========================================================================
 
     /**
      * Send a notification email.
+     *
+     * @param  NotificationMessageRecord  $record  The notification message record
      */
-    private function sendNotification(string $email, string $subject, string $body): void
+    private function sendNotification(NotificationMessageRecord $record): void
     {
         $message = new NotificationMessageVO(
-            body: new MessageBodyVO($body),
-            subject: new MessageSubjectVO($subject),
+            body: new MessageBodyVO($record->body),
+            subject: new MessageSubjectVO($record->subject),
         );
 
         NotifiableBuilder::create()
-            ->to(MailChannel::class, $email)
+            ->to(MailChannel::class, $record->email)
             ->subject($message->getSubjectValue())
             ->body($message->getBodyValue())
             ->type($message->getType())

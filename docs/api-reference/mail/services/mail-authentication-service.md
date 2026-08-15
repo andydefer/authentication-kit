@@ -8,7 +8,7 @@ Service générique d'authentification par email qui fonctionne avec n'importe q
 
 ```
 MailAuthenticationInterface
-    └── MailAuthenticationService [Template T de Model&MailAuthenticatable]
+    └── MailAuthenticationService [Template T of Model&MailAuthenticatable]
 ```
 
 **Génériques :**
@@ -18,12 +18,13 @@ MailAuthenticationInterface
 
 Ce service est le **cœur fonctionnel** du package d'authentification. Il orchestre toutes les opérations d'authentification en :
 
-1. Gérant le cycle de vie des utilisateurs (CRUD)
+1. Gérant le cycle de vie des utilisateurs (inscription, connexion, déconnexion)
 2. Créant et validant les tokens d'authentification via Nemesis
-3. Gérant les OTP (One-Time Passwords) via `OtpService`
+3. Gérant les OTP (One-Time Passwords) via `OtpService` pour la vérification email et la réinitialisation de mot de passe
 4. Enregistrant tous les événements via `LogRepositoryInterface`
 5. Stockant les tokens dans les cookies (optionnel)
 6. Fournissant des **hooks extensibles** pour personnaliser le comportement
+7. Supportant le **Template Method Pattern** pour la personnalisation des notifications
 
 ## Installation
 
@@ -45,7 +46,9 @@ php artisan vendor:publish --tag=authentication-kit-config
 
 **Retourne :** `static<T>` - Instance du service configurée pour le modèle donné
 
-**Exceptions :** `InvalidArgumentException` si la classe n'existe pas ou n'implémente pas l'interface
+**Exceptions :** 
+- `InvalidArgumentException` si la classe n'existe pas
+- `InvalidArgumentException` si la classe n'implémente pas `MailAuthenticatable`
 
 **Exemple :**
 ```php
@@ -58,6 +61,8 @@ use App\Models\User;
 
 $service = MailAuthenticationService::for(User::class);
 ```
+
+---
 
 ### `register(AbstractRecord $record): Model&Authenticatable`
 
@@ -94,6 +99,8 @@ $record = EmailRegisterAuthRecord::from([
 $user = $service->register($record);
 ```
 
+---
+
 ### `login(string $email, string $password): ?NemesisTokenRecord`
 
 | Paramètre | Type | Description |
@@ -118,6 +125,8 @@ if ($token !== null) {
 
 return response()->json(['error' => 'Invalid credentials'], 401);
 ```
+
+---
 
 ### `logout(Authenticatable&Model $authenticatable, string $plainToken): bool`
 
@@ -145,6 +154,8 @@ if ($result) {
 }
 ```
 
+---
+
 ### `sendPasswordResetOtp(string $email): bool`
 
 | Paramètre | Type | Description |
@@ -163,6 +174,8 @@ if ($success) {
     return response()->json(['message' => 'Reset code sent']);
 }
 ```
+
+---
 
 ### `resetPassword(string $email, string $code, string $password): bool`
 
@@ -189,6 +202,8 @@ if ($success) {
 }
 ```
 
+---
+
 ### `sendEmailVerificationOtp(Authenticatable&Model $authenticatable): bool`
 
 | Paramètre | Type | Description |
@@ -211,6 +226,8 @@ if ($success) {
 }
 ```
 
+---
+
 ### `verifyEmail(string $email, string $code): bool`
 
 | Paramètre | Type | Description |
@@ -231,6 +248,8 @@ if ($success) {
 }
 ```
 
+---
+
 ### `resendEmailVerificationOtp(Authenticatable&Model $authenticatable): bool`
 
 | Paramètre | Type | Description |
@@ -248,6 +267,8 @@ use App\Models\User;
 $user = User::find(1);
 $success = $service->resendEmailVerificationOtp($user);
 ```
+
+---
 
 ### `isEmailVerified(Authenticatable&Model $authenticatable): bool`
 
@@ -268,6 +289,8 @@ if ($service->isEmailVerified($user)) {
     // Accès autorisé
 }
 ```
+
+---
 
 ### `userExists(string $email): bool`
 
@@ -517,6 +540,7 @@ namespace App\Services;
 
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
+use AndyDefer\AuthenticationKit\Mail\Records\NotificationMessageRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -526,6 +550,37 @@ use App\Mail\PasswordChangedEmail;
 
 class CustomAuthService extends MailAuthenticationService
 {
+    // ✅ Personnalisation des notifications
+    protected function buildPasswordResetNotification(string $email, string $otp): NotificationMessageRecord
+    {
+        $html = view('emails.password-reset', [
+            'email' => $email,
+            'otp' => $otp,
+            'expires_in' => 10,
+        ])->render();
+
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => '🔐 Réinitialisation de votre mot de passe - Afya Medical',
+            'body' => $html,
+        ]);
+    }
+
+    protected function buildEmailVerificationNotification(string $email, string $otp): NotificationMessageRecord
+    {
+        $html = view('emails.verify-email', [
+            'email' => $email,
+            'otp' => $otp,
+            'expires_in' => 5,
+        ])->render();
+
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => '📧 Vérification de votre email - Afya Medical',
+            'body' => $html,
+        ]);
+    }
+
     // ✅ Hook après inscription
     protected function afterRegister(Model&Authenticatable $user, AbstractRecord $record): void
     {
@@ -537,6 +592,12 @@ class CustomAuthService extends MailAuthenticationService
             $user->assignRole('user');
         }
         
+        // Créer un profil
+        $user->profile()->create([
+            'bio' => $record->data->get('bio'),
+            'phone' => $record->data->get('phone'),
+        ]);
+        
         // Logger l'événement
         \Log::info('New user registered', ['user_id' => $user->id, 'email' => $user->email]);
     }
@@ -547,6 +608,7 @@ class CustomAuthService extends MailAuthenticationService
         // Mettre à jour la date de dernière connexion
         $user->last_login_at = now();
         $user->last_login_ip = request()->ip();
+        $user->login_count = ($user->login_count ?? 0) + 1;
         $user->save();
         
         // Logger l'activité
@@ -678,19 +740,40 @@ Plain Token → Recherche du token via Nemesis
     Retour booléen
 ```
 
+## Template Method Pattern - Méthodes extensibles
+
+Le service expose plusieurs méthodes protégées que vous pouvez surcharger :
+
+| Méthode | Type | Description |
+|---------|------|-------------|
+| `buildPasswordResetNotification()` | Template | Construire la notification de réinitialisation |
+| `buildEmailVerificationNotification()` | Template | Construire la notification de vérification email |
+| `beforeRegister()` | Hook | Avant l'inscription |
+| `afterRegister()` | Hook | Après l'inscription |
+| `beforeLogin()` | Hook | Avant la connexion |
+| `afterLogin()` | Hook | Après la connexion |
+| `beforeLogout()` | Hook | Avant la déconnexion |
+| `afterLogout()` | Hook | Après la déconnexion |
+| `beforeSendPasswordResetOtp()` | Hook | Avant l'envoi OTP reset |
+| `afterSendPasswordResetOtp()` | Hook | Après l'envoi OTP reset |
+| `beforeResetPassword()` | Hook | Avant la réinitialisation |
+| `afterResetPassword()` | Hook | Après la réinitialisation |
+| `beforeVerifyEmail()` | Hook | Avant la vérification email |
+| `afterVerifyEmail()` | Hook | Après la vérification email |
+
 ## Gestion des erreurs
 
-| Situation | Exception | Message |
-|-----------|-----------|---------|
+| Situation | Exception / Log | Message |
+|-----------|-----------------|---------|
 | Modèle inexistant | `InvalidArgumentException` | `Model class {className} does not exist` |
 | Modèle invalide | `InvalidArgumentException` | `Model {className} must implement MailAuthenticatable` |
 | Record invalide | `InvalidArgumentException` | `Invalid record type` |
 | Validation échouée | `ValidationException` | Messages de validation personnalisés |
-| Rate limit dépassé | - | Log avec `ErrorType::RATE_LIMIT_EXCEEDED` |
-| Utilisateur non trouvé | - | Log avec `ErrorType::USER_NOT_FOUND` |
-| OTP invalide | - | Log avec `ErrorType::INVALID_OTP` |
-| Token non trouvé | - | Log avec `ErrorType::TOKEN_NOT_FOUND` |
-| Échec révocation | - | Log avec `ErrorType::TOKEN_REVOKE_FAILED` |
+| Rate limit dépassé | Log (`ErrorType::RATE_LIMIT_EXCEEDED`) | `Rate limit exceeded` |
+| Utilisateur non trouvé | Log (`ErrorType::USER_NOT_FOUND`) | `User not found` |
+| OTP invalide | Log (`ErrorType::INVALID_OTP`) | `Invalid or expired OTP` |
+| Token non trouvé | Log (`ErrorType::TOKEN_NOT_FOUND`) | `Token not found` |
+| Échec révocation | Log (`ErrorType::TOKEN_REVOKE_FAILED`) | `Failed to revoke token` |
 
 ## Intégration
 
@@ -706,60 +789,61 @@ declare(strict_types=1);
 namespace App\Models;
 
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
+use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use AndyDefer\DomainStructures\Abstracts\AbstractData;
+use AndyDefer\PhpVo\ValueObjects\DateTimeVO;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
 class User extends Model implements MailAuthenticatable
 {
-    use SoftDeletes;
-    
-    protected $fillable = ['name', 'email', 'password'];
-    
+    protected $fillable = ['name', 'email', 'password', 'email_verified_at'];
     protected $hidden = ['password'];
     
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'last_login_at' => 'datetime',
-    ];
-    
     // Méthodes requises par MailAuthenticatable
-    public function getAuthIdentifierName(): string
+    public static function getMailAuthService(): MailAuthenticationInterface
     {
-        return 'id';
+        return MailAuthenticationService::for(self::class);
     }
     
-    public function getAuthIdentifier(): mixed
+    public function getEmailVerifiedAt(): ?DateTimeVO
     {
-        return $this->id;
+        return $this->email_verified_at 
+            ? new DateTimeVO($this->email_verified_at->toIso8601String())
+            : null;
     }
     
-    public function getAuthPassword(): string
+    public static function generate(array $data): Model&MailAuthenticatable
     {
-        return $this->password;
-    }
-    
-    // Méthode de fabrication (factory) pour l'inscription
-    public static function generate(array $data): static
-    {
-        $model = new static();
-        $model->fill($data);
-        $model->password = Hash::make($data['password']);
-        $model->save();
+        $validator = Validator::make($data, [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'unique:users'],
+            'password' => ['required', 'min:8'],
+        ]);
         
-        return $model;
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+        
+        return self::create([
+            'name' => $data['name'],
+            'email' => strtolower($data['email']),
+            'password' => Hash::make($data['password']),
+        ]);
     }
     
-    // Format pour l'API
-    public function nemesisFormat(): array
+    public function nemesisFormat(): AbstractData
     {
-        return [
-            'id' => $this->id,
-            'name' => $this->name,
-            'email' => $this->email,
-            'emailVerifiedAt' => $this->email_verified_at?->toIso8601String(),
-            'createdAt' => $this->created_at?->toIso8601String(),
-            'updatedAt' => $this->updated_at?->toIso8601String(),
-        ];
+        return new UserData(
+            id: $this->id,
+            name: $this->name,
+            email: $this->email,
+            emailVerifiedAt: $this->email_verified_at?->toIso8601String(),
+            createdAt: $this->created_at?->toIso8601String(),
+            updatedAt: $this->updated_at?->toIso8601String(),
+        );
     }
 }
 ```
@@ -1020,4 +1104,5 @@ class AuthController extends Controller
 - `NemesisInterface` - Gestion des tokens d'authentification
 - `OtpService` - Gestion des OTP (One-Time Passwords)
 - `CookieTokenStorageInterface` - Stockage des tokens dans les cookies
+- `NotificationMessageRecord` - Record des notifications
 - `ErrorType` - Types d'erreurs pour les logs

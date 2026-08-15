@@ -748,12 +748,13 @@ Cookie: auth_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | Champ | Type | Requis | Description |
 |-------|------|--------|-------------|
 | `email` | `string` | ✅ Oui | Email de l'utilisateur |
+| `model_type` | `string` | ✅ Oui | FQCN du modèle |
 
 **Requête :**
 ```json
 {
     "email": "john@example.com",
-    "model_type": "App\\Models\\User",
+    "model_type": "App\\Models\\User"
 }
 ```
 
@@ -855,7 +856,7 @@ Cookie: auth_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | Champ | Type | Requis | Description |
 |-------|------|--------|-------------|
 | `model_type` | `string` | ✅ Oui | FQCN du modèle |
-| `auth_id` | `integer` | ✅ Oui | ID de l'utilisateur |
+| `auth_id` | `integer|string` | ✅ Oui | ID ou UUID de l'utilisateur |
 
 **Requête :**
 ```json
@@ -881,7 +882,7 @@ Cookie: auth_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | Champ | Type | Requis | Description |
 |-------|------|--------|-------------|
 | `model_type` | `string` | ✅ Oui | FQCN du modèle |
-| `auth_id` | `integer` | ✅ Oui | ID de l'utilisateur |
+| `auth_id` | `integer|string` | ✅ Oui | ID ou UUID de l'utilisateur |
 
 **Requête :**
 ```json
@@ -944,6 +945,36 @@ $authService = MailAuthenticationService::for(User::class);
 | `beforeVerifyEmail()` | Avant vérif email | Vérifications supplémentaires |
 | `afterVerifyEmail()` | Après vérif email | Activation compte |
 
+### Template Method Pattern - Personnalisation des notifications
+
+```php
+/**
+ * Build the password reset notification message.
+ * Override this method to customize the password reset email.
+ */
+protected function buildPasswordResetNotification(string $email, string $otp): NotificationMessageRecord
+{
+    return NotificationMessageRecord::from([
+        'email' => $email,
+        'subject' => 'Password Reset Code',
+        'body' => "Your password reset code is: {$otp}",
+    ]);
+}
+
+/**
+ * Build the email verification notification message.
+ * Override this method to customize the email verification email.
+ */
+protected function buildEmailVerificationNotification(string $email, string $otp): NotificationMessageRecord
+{
+    return NotificationMessageRecord::from([
+        'email' => $email,
+        'subject' => 'Email Verification Code',
+        'body' => "Your email verification code is: {$otp}",
+    ]);
+}
+```
+
 ---
 
 ## 🔧 Extension du service
@@ -959,6 +990,7 @@ namespace App\Services;
 
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
+use AndyDefer\AuthenticationKit\Mail\Records\NotificationMessageRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
@@ -968,6 +1000,40 @@ use Illuminate\Support\Facades\Log;
  */
 final class CustomAuthService extends MailAuthenticationService
 {
+    // ============================================================
+    // TEMPLATE METHOD - Personnalisation des notifications
+    // ============================================================
+
+    protected function buildPasswordResetNotification(string $email, string $otp): NotificationMessageRecord
+    {
+        $html = view('emails.password-reset', [
+            'email' => $email,
+            'otp' => $otp,
+            'expires_in' => 10,
+        ])->render();
+
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => '🔐 Réinitialisation de votre mot de passe - Afya Medical',
+            'body' => $html,
+        ]);
+    }
+
+    protected function buildEmailVerificationNotification(string $email, string $otp): NotificationMessageRecord
+    {
+        $html = view('emails.verify-email', [
+            'email' => $email,
+            'otp' => $otp,
+            'expires_in' => 5,
+        ])->render();
+
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => '📧 Vérification de votre email - Afya Medical',
+            'body' => $html,
+        ]);
+    }
+
     // ============================================================
     // HOOKS - Logique métier personnalisée
     // ============================================================
@@ -2010,7 +2076,10 @@ class AuthService {
       const response = await fetch(`${API_URL}/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ 
+          email,
+          model_type: MODEL_TYPE,
+        }),
       });
 
       const result = await response.json();
