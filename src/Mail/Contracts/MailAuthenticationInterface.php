@@ -101,4 +101,13 @@ interface MailAuthenticationInterface
      * @return bool True if a user with the email exists, false otherwise
      */
     public function userExists(string $email): bool;
+
+    /**
+     * Get the password validation rules.
+     *
+     * Override this method to customize password validation.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function getPasswordValidationRules(): array;
 }

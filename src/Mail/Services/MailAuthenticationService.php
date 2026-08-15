@@ -665,6 +665,20 @@ class MailAuthenticationService implements MailAuthenticationInterface
         ]);
     }
 
+    /**
+     * Get the password validation rules.
+     *
+     * Override this method to customize password validation.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function getPasswordValidationRules(): array
+    {
+        return [
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ];
+    }
+
     // ========================================================================
     // MÉTHODES PRIVÉES
     // ========================================================================

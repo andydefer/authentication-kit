@@ -14,8 +14,10 @@ use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\PasswordResetSuccessData;
 use AndyDefer\AuthenticationKit\Mail\Records\ResetPasswordRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\DomainStructures\Utils\DataObject;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
+use Illuminate\Support\Facades\Validator;
 
 /**
  * Handles password reset using an OTP verification code.
@@ -57,16 +59,25 @@ final class ResetPasswordAction extends AbstractAction
             );
         }
 
-        if ($record->password !== $record->password_confirmation) {
-            $this->errorType = ErrorType::VALIDATION_ERROR;
+        // ✅ Valider le mot de passe avec les règles personnalisables
+        $rules = $this->authService::getPasswordValidationRules();
+        $validator = Validator::make(
+            [
+                'password' => $record->password,
+                'password_confirmation' => $record->password_confirmation,
+            ],
+            $rules
+        );
 
+        if ($validator->fails()) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->message(),
-                    status: ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->getHttpStatusCode(),
-                    errorCode: ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->value
+                    message: 'Password validation failed',
+                    status: 422,
+                    errorCode: 'PASSWORD_VALIDATION_FAILED',
+                    errors: DataObject::from($validator->errors()->toArray())
                 ),
-                ErrorCode::PASSWORD_CONFIRMATION_MISMATCH->getHttpStatusCode()
+                422
             );
         }
 

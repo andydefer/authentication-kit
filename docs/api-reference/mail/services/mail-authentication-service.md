@@ -25,6 +25,7 @@ Ce service est le **cœur fonctionnel** du package d'authentification. Il orches
 5. Stockant les tokens dans les cookies (optionnel)
 6. Fournissant des **hooks extensibles** pour personnaliser le comportement
 7. Supportant le **Template Method Pattern** pour la personnalisation des notifications
+8. Supportant le **Template Method Pattern** pour la validation des mots de passe
 
 ## Installation
 
@@ -581,6 +582,24 @@ class CustomAuthService extends MailAuthenticationService
         ]);
     }
 
+    // ✅ Personnalisation des règles de validation du mot de passe
+    public static function getPasswordValidationRules(): array
+    {
+        return [
+            'password' => [
+                'required',
+                'string',
+                'min:12',
+                'confirmed',
+                'regex:/[A-Z]/',
+                'regex:/[a-z]/',
+                'regex:/[0-9]/',
+                'regex:/[@$!%*?&]/',
+                'not_in:password,123456,admin',
+            ],
+        ];
+    }
+
     // ✅ Hook après inscription
     protected function afterRegister(Model&Authenticatable $user, AbstractRecord $record): void
     {
@@ -748,6 +767,7 @@ Le service expose plusieurs méthodes protégées que vous pouvez surcharger :
 |---------|------|-------------|
 | `buildPasswordResetNotification()` | Template | Construire la notification de réinitialisation |
 | `buildEmailVerificationNotification()` | Template | Construire la notification de vérification email |
+| `getPasswordValidationRules()` | Template | Définir les règles de validation du mot de passe |
 | `beforeRegister()` | Hook | Avant l'inscription |
 | `afterRegister()` | Hook | Après l'inscription |
 | `beforeLogin()` | Hook | Avant la connexion |
@@ -774,6 +794,7 @@ Le service expose plusieurs méthodes protégées que vous pouvez surcharger :
 | OTP invalide | Log (`ErrorType::INVALID_OTP`) | `Invalid or expired OTP` |
 | Token non trouvé | Log (`ErrorType::TOKEN_NOT_FOUND`) | `Token not found` |
 | Échec révocation | Log (`ErrorType::TOKEN_REVOKE_FAILED`) | `Failed to revoke token` |
+| Échec validation mot de passe | `ErrorResponseData` (422) | `Password validation failed` |
 
 ## Intégration
 
@@ -1049,6 +1070,17 @@ class AuthController extends Controller
             'code' => 'required|string|size:6',
             'password' => 'required|min:8|confirmed',
         ]);
+        
+        // ✅ Validation avec les règles personnalisables
+        $rules = $this->service::getPasswordValidationRules();
+        $validator = Validator::make($validated, $rules);
+        
+        if ($validator->fails()) {
+            return response()->json([
+                'errors' => $validator->errors(),
+                'message' => 'Password validation failed'
+            ], 422);
+        }
         
         $reset = $this->service->resetPassword(
             $validated['email'],

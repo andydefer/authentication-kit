@@ -61,7 +61,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
 
         $user = TestUserMail::create([
             'name' => $validated['name'],
-            'email' => strtolower($validated['email']), // ✅ Normalisation
+            'email' => strtolower($validated['email']),
             'password' => bcrypt($validated['password']),
         ]);
 
@@ -70,7 +70,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
 
     public function login(string $email, string $password): ?NemesisTokenRecord
     {
-        $user = TestUserMail::where('email', strtolower($email))->first(); // ✅ Normalisation
+        $user = TestUserMail::where('email', strtolower($email))->first();
 
         if ($user === null) {
             return null;
@@ -106,7 +106,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
      */
     public function sendPasswordResetOtp(string $email): bool
     {
-        $normalizedEmail = strtolower($email); // ✅ Normalisation
+        $normalizedEmail = strtolower($email);
         $user = TestUserMail::where('email', $normalizedEmail)->first();
 
         if ($user === null) {
@@ -115,15 +115,12 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
 
         $purpose = $this->getPasswordResetPurpose();
 
-        // ✅ Vérifier le rate limit avec un seuil bas pour les tests
         if ($this->otpService->isRateLimited($user, $purpose, self::RATE_LIMIT_ATTEMPTS)) {
             return false;
         }
 
-        // ✅ Créer l'OTP
         $otp = $this->otpService->create($user, $purpose);
 
-        // ✅ Envoyer la notification par email
         $message = new NotificationMessageVO(
             body: new MessageBodyVO("Your password reset code is: {$otp->code}"),
             subject: new MessageSubjectVO('Password Reset Code'),
@@ -146,7 +143,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
      */
     public function resetPassword(string $email, string $code, string $password): bool
     {
-        $user = TestUserMail::where('email', strtolower($email))->first(); // ✅ Normalisation
+        $user = TestUserMail::where('email', strtolower($email))->first();
 
         if ($user === null) {
             return false;
@@ -189,13 +186,11 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
             return false;
         }
 
-        // ✅ Créer l'OTP
         $otp = $this->otpService->create(
             identifier: $authenticatable,
             purpose: $purpose,
         );
 
-        // ✅ Envoyer la notification par email
         $message = new NotificationMessageVO(
             body: new MessageBodyVO("Your email verification code is: {$otp->code}"),
             subject: new MessageSubjectVO('Email Verification Code'),
@@ -218,7 +213,7 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
      */
     public function verifyEmail(string $email, string $code): bool
     {
-        $user = TestUserMail::where('email', strtolower($email))->first(); // ✅ Normalisation
+        $user = TestUserMail::where('email', strtolower($email))->first();
 
         if ($user === null) {
             return false;
@@ -271,7 +266,21 @@ final class TestUserMailAuthenticationService implements MailAuthenticationInter
      */
     public function userExists(string $email): bool
     {
-        return TestUserMail::where('email', strtolower($email))->exists(); // ✅ Normalisation
+        return TestUserMail::where('email', strtolower($email))->exists();
+    }
+
+    /**
+     * Get the password validation rules.
+     *
+     * Override this method to customize password validation.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function getPasswordValidationRules(): array
+    {
+        return [
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ];
     }
 
     /**

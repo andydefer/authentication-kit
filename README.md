@@ -1225,6 +1225,45 @@ final class CustomAuthService extends MailAuthenticationService
 }
 ```
 
+## Template Method Pattern - Personnalisation de la validation du mot de passe
+
+```php
+/**
+ * Get the password validation rules.
+ * Override this method to customize password validation.
+ *
+ * @return array<string, array<int, mixed>>
+ */
+public static function getPasswordValidationRules(): array
+{
+    return [
+        'password' => ['required', 'string', 'min:8', 'confirmed'],
+    ];
+}
+```
+
+**Exemple de personnalisation :**
+
+```php
+// Dans votre service personnalisé
+public static function getPasswordValidationRules(): array
+{
+    return [
+        'password' => [
+            'required',
+            'string',
+            'min:12',
+            'confirmed',
+            'regex:/[A-Z]/',
+            'regex:/[a-z]/',
+            'regex:/[0-9]/',
+            'regex:/[@$!%*?&]/',
+            'not_in:password,123456,admin',
+        ],
+    ];
+}
+```
+
 ---
 
 ## ⚙️ Actions internes

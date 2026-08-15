@@ -20,8 +20,8 @@ final class ResetPasswordRequest extends AbstractRequest
             'model_type' => ['required', 'string', new ValidModelTypeRule],
             'email' => ['required', 'email'],
             'token' => ['required', 'string', new ValidOtpRule(self::PASSWORD_RESET_PURPOSE)],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'password_confirmation' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', 'confirmed'],
+            'password_confirmation' => ['required', 'string'],
         ];
     }
 
@@ -44,7 +44,6 @@ final class ResetPasswordRequest extends AbstractRequest
             'email.email' => 'Please provide a valid email address',
             'token.required' => 'Verification token is required',
             'password.required' => 'Password is required',
-            'password.min' => 'Password must be at least 8 characters',
             'password.confirmed' => 'Password confirmation does not match',
             'password_confirmation.required' => 'Password confirmation is required',
         ];
