@@ -277,10 +277,13 @@ class MailAuthenticationService implements MailAuthenticationInterface
         }
 
         $purpose = $this->getPasswordResetPurpose();
-
         $rateLimitAttempts = $this->config->getPasswordResetRateLimitAttempts();
 
-        if ($this->otpService->isRateLimited($user, $purpose, $rateLimitAttempts)) {
+        // ✅ Fenêtre = durée de validité de l'OTP (10 minutes)
+        $otpTtl = $purpose->getTtl() ?? 600;
+        $window = now()->subSeconds($otpTtl);
+
+        if ($this->otpService->isRateLimited($user, $purpose, $rateLimitAttempts, $window)) {
             $this->logRepository->logPasswordResetLinkSent(
                 email: $email,
                 success: false,
@@ -376,10 +379,13 @@ class MailAuthenticationService implements MailAuthenticationInterface
         }
 
         $purpose = $this->getEmailVerificationPurpose();
-
         $rateLimitAttempts = $this->config->getEmailVerificationRateLimitAttempts();
 
-        if ($this->otpService->isRateLimited($authenticatable, $purpose, $rateLimitAttempts)) {
+        // ✅ Fenêtre = durée de validité de l'OTP (5 minutes)
+        $otpTtl = $purpose->getTtl() ?? 300;
+        $window = now()->subSeconds($otpTtl);
+
+        if ($this->otpService->isRateLimited($authenticatable, $purpose, $rateLimitAttempts, $window)) {
             $this->logRepository->logVerificationFailure(
                 email: $authenticatable->email ?? 'unknown',
                 modelClass: $this->modelClass,
