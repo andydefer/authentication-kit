@@ -73,10 +73,21 @@ final class VerifyEmailAction extends AbstractAction
         try {
             $normalizedEmail = strtolower(trim($record->email));
 
+            /** @var Model $modelClass */
+            $modelClass = $this->modelClass;
+
+            // ✅ Vérifier si le modèle utilise SoftDeletes
+            $usesSoftDeletes = in_array(SoftDeletes::class, class_uses($modelClass), true);
+
+            $query = $modelClass::query();
+
+            // ✅ Appliquer withTrashed uniquement si le modèle utilise SoftDeletes
+            if ($usesSoftDeletes) {
+                $query = $query->withTrashed();
+            }
+
             /** @var MailAuthenticatable&Model|null $authenticatable */
-            $authenticatable = $this->modelClass::withTrashed()
-                ->where('email', $normalizedEmail)
-                ->first();
+            $authenticatable = $query->where('email', $normalizedEmail)->first();
 
             if ($authenticatable === null) {
                 $this->success = false;
@@ -93,8 +104,7 @@ final class VerifyEmailAction extends AbstractAction
                 );
             }
 
-            $usesSoftDeletes = in_array(SoftDeletes::class, class_uses($authenticatable), true);
-
+            // ✅ Vérifier si l'utilisateur est soft-deleted (si le modèle utilise SoftDeletes)
             if ($usesSoftDeletes && $authenticatable->trashed()) {
                 $this->success = false;
                 $this->errorMessage = 'User not found';
