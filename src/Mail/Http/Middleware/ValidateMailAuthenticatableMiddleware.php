@@ -8,8 +8,6 @@ use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterfa
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
-use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
-use AndyDefer\Nemesis\Services\CookieTokenStorageService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,8 +31,6 @@ final class ValidateMailAuthenticatableMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        CookieTokenStorageService::class;
-
         $modelType = $request->input('model_type');
 
         if ($modelType === null) {
@@ -70,8 +66,11 @@ final class ValidateMailAuthenticatableMiddleware
             );
         }
 
+        // ✅ Bind le service via la méthode statique du modèle
+        // Cela permet d'utiliser le service personnalisé défini dans le modèle
         app()->bind(MailAuthenticationInterface::class, function ($app) use ($modelType) {
-            return MailAuthenticationService::for($modelType);
+            /** @var MailAuthenticatable $modelType */
+            return $modelType::getMailAuthService();
         });
 
         $response = $next($request);
