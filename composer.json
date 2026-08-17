@@ -15,7 +15,7 @@
         "jenssegers/agent": "^2.6",
         "andydefer/laravel-nemesis": "^1.15.5",
         "andydefer/laravel-otp": "^1.1.32",
-        "andydefer/laravel-notification": "^1.5.3"
+        "andydefer/laravel-notification": "^1.5.4"
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0",
