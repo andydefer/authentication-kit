@@ -13,8 +13,8 @@
         "php": "^8.1",
         "andydefer/directive-forge": "^2.17.16",
         "jenssegers/agent": "^2.6",
-        "andydefer/laravel-nemesis": "^1.15.4",
-        "andydefer/laravel-otp": "^1.1.31",
+        "andydefer/laravel-nemesis": "^1.15.5",
+        "andydefer/laravel-otp": "^1.1.32",
         "andydefer/laravel-notification": "^1.5.3"
     },
     "require-dev": {
