@@ -22,6 +22,7 @@ use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
+use AndyDefer\Nemesis\Services\NemesisService;
 use Exception;
 use Illuminate\Validation\ValidationException;
 
@@ -143,12 +144,12 @@ final class EmailRegisterAction extends AbstractAction
                 );
 
                 $token = $plainToken;
-                dd($record->with_token, $token);
+                NemesisService::class;
             }
 
             return ResponseFactory::json(
                 new AuthRegisteredData(
-                    message: 'Registration successful',
+                    message: $record->with_token ? 'with_token est a true' : 'with_token est a false'.json_encode(request()->all()),
                     auth: DataObject::from($auth->nemesisFormat()),
                     token: $token,
                 ),

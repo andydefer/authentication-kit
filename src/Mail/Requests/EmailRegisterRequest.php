@@ -22,6 +22,7 @@ final class EmailRegisterRequest extends AbstractRequest
 
     public function getRecord(): AbstractRecord
     {
+
         return new EmailRegisterAuthRecord(
             model_type: $this->input('model_type'),
             with_token: $this->input('with_token', false),
