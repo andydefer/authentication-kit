@@ -46,19 +46,19 @@ Route::name('api.')->group(function (): void {
         Route::post('/email-register', action_route(
             EmailRegisterRequest::class,
             EmailRegisterAction::class
-        ))->name('register');
+        ))->name('email-register');
 
         // Login
         Route::post('/email-login', action_route(
             EmailLoginRequest::class,
             EmailLoginAction::class
-        ))->name('login');
+        ))->name('email-login');
 
         // Password reset request
         Route::post('/send-password-link', action_route(
             SendPasswordResetLinkRequest::class,
             SendPasswordResetLinkAction::class
-        ))->name('forgot-password');
+        ))->name('send-password-link');
 
         // Password reset confirmation
         Route::post('/reset-password', action_route(
@@ -84,7 +84,7 @@ Route::name('api.')->group(function (): void {
             Route::post('/email-logout', action_route(
                 EmailLogoutRequest::class,
                 EmailLogoutAction::class
-            ))->name('logout');
+            ))->name('email-logout');
 
             // Send email verification OTP
             Route::post('/send-email-verification', action_route(
@@ -106,6 +106,6 @@ Route::name('api.')->group(function (): void {
     Route::post('/get-current-user', action_route(
         EmptyRequest::class,
         GetCurrentUserAction::class
-    ))->name('me');
+    ))->name('get-current-user');
 
 });
