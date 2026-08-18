@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "2f7f47f62b61d395612943f0f9f8a135",
+    "content-hash": "1146586449bad58ac7c8991420ea49b0",
     "packages": [
         {
             "name": "andydefer/algo-kit",
@@ -580,20 +580,20 @@
         },
         {
             "name": "andydefer/laravel-notification",
-            "version": "v1.5.8",
+            "version": "v1.5.9",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-notification.git",
-                "reference": "8781e24ae97f2c16c631b9f089b54705678da604"
+                "reference": "c30bdda1d587fff983ddb3b7246f35b74d661c81"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-notification/zipball/8781e24ae97f2c16c631b9f089b54705678da604",
-                "reference": "8781e24ae97f2c16c631b9f089b54705678da604",
+                "url": "https://api.github.com/repos/andydefer/laravel-notification/zipball/c30bdda1d587fff983ddb3b7246f35b74d661c81",
+                "reference": "c30bdda1d587fff983ddb3b7246f35b74d661c81",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-task": "^4.11.11",
+                "andydefer/laravel-task": "^4.11.12",
                 "php": "^8.2"
             },
             "require-dev": {
@@ -631,9 +631,9 @@
             "description": "Extensible polymorphic notification system for Laravel with multi-channel support (Mail, Database, SMS, WhatsApp, etc.)",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-notification/issues",
-                "source": "https://github.com/andydefer/laravel-notification/tree/v1.5.8"
+                "source": "https://github.com/andydefer/laravel-notification/tree/v1.5.9"
             },
-            "time": "2026-08-18T10:52:55+00:00"
+            "time": "2026-08-18T11:03:55+00:00"
         },
         {
             "name": "andydefer/laravel-otp",

@@ -22,7 +22,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        $this->app['router']->post('/api/email/resend', action_route(
+        $this->app['router']->post('/api/resend-email-verification', action_route(
             ResendEmailVerificationRequest::class,
             ResendEmailVerificationAction::class
         ));
@@ -57,7 +57,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -88,7 +88,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -118,7 +118,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => 1,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['model_type']);
@@ -130,7 +130,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'model_type' => TestUserMail::class,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['auth_id']);
@@ -143,7 +143,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => 1,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         // ✅ La validation échoue avant d'arriver à l'action
         $response->assertStatus(422);
@@ -160,7 +160,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => 99999,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(404);
         $response->assertJson([
@@ -178,10 +178,10 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response1 = $this->postJson('/api/email/resend', $payload);
+        $response1 = $this->postJson('/api/resend-email-verification', $payload);
         $response1->assertStatus(200);
 
-        $response2 = $this->postJson('/api/email/resend', $payload);
+        $response2 = $this->postJson('/api/resend-email-verification', $payload);
 
         $this->assertContains($response2->status(), [200, 500]);
     }
@@ -193,7 +193,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => 1,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         // ✅ La validation échoue avant d'arriver à l'action
         $response->assertStatus(422);
@@ -216,7 +216,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(200);
     }
@@ -232,7 +232,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(200);
     }
@@ -246,10 +246,10 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response1 = $this->postJson('/api/email/resend', $payload);
+        $response1 = $this->postJson('/api/resend-email-verification', $payload);
         $response1->assertStatus(200);
 
-        $response2 = $this->postJson('/api/email/resend', $payload);
+        $response2 = $this->postJson('/api/resend-email-verification', $payload);
 
         $this->assertContains($response2->status(), [200, 500]);
     }
@@ -267,10 +267,10 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response1 = $this->postJson('/api/email/resend', $payload);
+        $response1 = $this->postJson('/api/resend-email-verification', $payload);
         $response1->assertStatus(200);
 
-        $response2 = $this->postJson('/api/email/resend', $payload);
+        $response2 = $this->postJson('/api/resend-email-verification', $payload);
         $response2->assertStatus(200);
 
         $purpose = new PurposeVO(
@@ -294,7 +294,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/resend', $payload);
+        $response = $this->postJson('/api/resend-email-verification', $payload);
 
         $response->assertStatus(404);
         $response->assertJson([
@@ -324,7 +324,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $resendResponse = $this->postJson('/api/email/resend', $payload);
+        $resendResponse = $this->postJson('/api/resend-email-verification', $payload);
         $resendResponse->assertStatus(200);
         $resendResponse->assertJson([
             'message' => 'Verification OTP resent successfully',

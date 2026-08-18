@@ -32,75 +32,80 @@ use Illuminate\Support\Facades\Route;
  * @package AndyDefer\AuthenticationKit\Mail
  */
 
-/*
- * Public Authentication Routes
- *
- * These routes are accessible without authentication tokens.
- * They handle user registration, login, password reset, and email verification.
- */
-Route::middleware(['validate.mail.authenticatable'])->group(function (): void {
-    // Registration
-    Route::post('/register', action_route(
-        EmailRegisterRequest::class,
-        EmailRegisterAction::class
-    ))->name('register');
-
-    // Login
-    Route::post('/login', action_route(
-        EmailLoginRequest::class,
-        EmailLoginAction::class
-    ))->name('login');
-
-    // Password reset request
-    Route::post('/forgot-password', action_route(
-        SendPasswordResetLinkRequest::class,
-        SendPasswordResetLinkAction::class
-    ))->name('password.email');
-
-    // Password reset confirmation
-    Route::post('/reset-password', action_route(
-        ResetPasswordRequest::class,
-        ResetPasswordAction::class
-    ))->name('password.update');
-
-    // Email verification
-    Route::post('/email/verify', action_route(
-        VerifyEmailRequest::class,
-        VerifyEmailAction::class
-    ))->name('verification.verify');
+Route::name('api.')->group(function (): void {
 
     /*
-     * Protected Authentication Routes
+     * Public Authentication Routes
      *
-     * These routes require a valid Nemesis authentication token.
-     * They handle logout and email verification OTP operations.
+     * These routes are accessible without authentication tokens.
+     * They handle user registration, login, password reset, and email verification.
      */
-    Route::middleware(['nemesis.token'])->group(function (): void {
+    Route::middleware(['validate.mail.authenticatable'])->group(function (): void {
 
-        // Logout
-        Route::post('/logout', action_route(
-            EmailLogoutRequest::class,
-            EmailLogoutAction::class
-        ))->name('logout');
+        // Registration
+        Route::post('/email-register', action_route(
+            EmailRegisterRequest::class,
+            EmailRegisterAction::class
+        ))->name('register');
 
-        // Send email verification OTP
-        Route::post('/email/verification', action_route(
-            SendEmailVerificationRequest::class,
-            SendEmailVerificationAction::class
-        ))->name('verification.send');
+        // Login
+        Route::post('/email-login', action_route(
+            EmailLoginRequest::class,
+            EmailLoginAction::class
+        ))->name('login');
 
-        // Resend email verification OTP
-        Route::post('/email/resend', action_route(
-            ResendEmailVerificationRequest::class,
-            ResendEmailVerificationAction::class
-        ))->name('verification.resend');
+        // Password reset request
+        Route::post('/send-password-link', action_route(
+            SendPasswordResetLinkRequest::class,
+            SendPasswordResetLinkAction::class
+        ))->name('forgot-password');
+
+        // Password reset confirmation
+        Route::post('/reset-password', action_route(
+            ResetPasswordRequest::class,
+            ResetPasswordAction::class
+        ))->name('reset-password');
+
+        // Email verification
+        Route::post('/verify-email', action_route(
+            VerifyEmailRequest::class,
+            VerifyEmailAction::class
+        ))->name('verify-email');
+
+        /*
+         * Protected Authentication Routes
+         *
+         * These routes require a valid Nemesis authentication token.
+         * They handle logout and email verification OTP operations.
+         */
+        Route::middleware(['nemesis.token'])->group(function (): void {
+
+            // Logout
+            Route::post('/email-logout', action_route(
+                EmailLogoutRequest::class,
+                EmailLogoutAction::class
+            ))->name('logout');
+
+            // Send email verification OTP
+            Route::post('/send-email-verification', action_route(
+                SendEmailVerificationRequest::class,
+                SendEmailVerificationAction::class
+            ))->name('send-email-verification');
+
+            // Resend email verification OTP
+            Route::post('/resend-email-verification', action_route(
+                ResendEmailVerificationRequest::class,
+                ResendEmailVerificationAction::class
+            ))->name('resend-email-verification');
+
+        });
 
     });
 
-});
+    // ✅ Get current authenticated user (no middleware, we handle it ourselves)
+    Route::post('/get-current-user', action_route(
+        EmptyRequest::class,
+        GetCurrentUserAction::class
+    ))->name('me');
 
-// ✅ Get current authenticated user (no middleware, we handle it ourselves)
-Route::post('/me', action_route(
-    EmptyRequest::class,
-    GetCurrentUserAction::class
-))->name('me');
+});

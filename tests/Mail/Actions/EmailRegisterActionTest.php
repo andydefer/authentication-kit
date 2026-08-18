@@ -45,7 +45,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             }
         );
 
-        $this->app['router']->middleware(['validate.mail.authenticatable'])->post('/api/register', action_route(
+        $this->app['router']->middleware(['validate.mail.authenticatable'])->post('/api/email-register', action_route(
             EmailRegisterRequest::class,
             EmailRegisterAction::class
         ));
@@ -91,7 +91,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
         $response->assertJsonStructure([
@@ -122,7 +122,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
         $response->assertJsonStructure([
@@ -153,7 +153,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
     }
@@ -167,7 +167,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(422);
     }
@@ -181,7 +181,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['email']);
@@ -197,7 +197,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => '123',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['password']);
@@ -213,7 +213,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'WrongPassword!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['password']);
@@ -229,7 +229,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(500);
         $response->assertJson([
@@ -250,9 +250,9 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $this->postJson('/api/register', $payload);
+        $this->postJson('/api/email-register', $payload);
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['email']);
@@ -267,7 +267,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['name']);
@@ -282,7 +282,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(400);
         $response->assertJson([
@@ -302,7 +302,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(400);
         $response->assertJson([
@@ -331,7 +331,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
 
@@ -357,7 +357,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
 
@@ -380,7 +380,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
 
@@ -406,7 +406,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
 
@@ -434,7 +434,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/register', $payload);
+        $response = $this->postJson('/api/email-register', $payload);
 
         $response->assertStatus(201);
 
@@ -467,7 +467,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_confirmation' => 'Password123!',
         ];
 
-        $registerResponse = $this->postJson('/api/register', $payload);
+        $registerResponse = $this->postJson('/api/email-register', $payload);
         $registerResponse->assertStatus(201);
 
         $cookieValue = $this->getCookieValue($registerResponse, 'nemesis_token');

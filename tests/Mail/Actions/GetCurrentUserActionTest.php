@@ -41,10 +41,10 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
         $this->refreshConfigService();
 
         // ✅ Une seule route pour les deux cas (Bearer token ET cookie)
-        Route::post('/me', action_route(
+        Route::post('api/get-current-user', action_route(
             EmptyRequest::class,
             GetCurrentUserAction::class
-        ))->name('me');
+        ))->name('get-current-user');
 
         Route::middleware(['validate.mail.authenticatable'])->post('/login', action_route(
             EmailLoginRequest::class,
@@ -100,7 +100,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
     {
         [$user, $token] = $this->createUserAndLogin();
 
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -123,7 +123,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
     public function test_me_returns_401_when_no_bearer_token(): void
     {
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ]);
 
@@ -135,7 +135,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
     public function test_me_returns_401_with_invalid_bearer_token(): void
     {
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer invalid-token',
@@ -155,7 +155,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
     {
         [$user, $token] = $this->createUserAndLogin(true);
 
-        $response = $this->call('POST', '/me', [
+        $response = $this->call('POST', 'api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'nemesis_token' => $token,
@@ -171,7 +171,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
     public function test_me_returns_401_when_no_cookie(): void
     {
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ]);
 
@@ -183,7 +183,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
     public function test_me_returns_401_with_invalid_cookie(): void
     {
-        $response = $this->call('POST', '/me', [
+        $response = $this->call('POST', 'api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'nemesis_token' => 'invalid-token',
@@ -212,7 +212,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
             $tokenModel->save();
         }
 
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -237,7 +237,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
             $tokenModel->save();
         }
 
-        $response = $this->call('POST', '/me', [
+        $response = $this->call('POST', 'api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'nemesis_token' => $token,
@@ -265,7 +265,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
             $nemesis->revoke($tokenModel);
         }
 
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -289,7 +289,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
             $nemesis->revoke($tokenModel);
         }
 
-        $response = $this->call('POST', '/me', [
+        $response = $this->call('POST', 'api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'nemesis_token' => $token,
@@ -309,7 +309,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
     {
         [$user, $token] = $this->createUserAndLogin();
 
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -332,7 +332,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
         $user->delete();
 
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -348,7 +348,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
     {
         [$user, $token] = $this->createUserAndLogin();
 
-        $response1 = $this->postJson('/me', [
+        $response1 = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -356,7 +356,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
         $response1->assertStatus(200);
         $response1->assertJson(['id' => $user->id]);
 
-        $response2 = $this->postJson('/me', [
+        $response2 = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -369,7 +369,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
     {
         [$user, $token] = $this->createUserAndLogin(true);
 
-        $response1 = $this->call('POST', '/me', [
+        $response1 = $this->call('POST', 'api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'nemesis_token' => $token,
@@ -377,7 +377,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
         $response1->assertStatus(200);
         $response1->assertJson(['id' => $user->id]);
 
-        $response2 = $this->call('POST', '/me', [
+        $response2 = $this->call('POST', 'api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'nemesis_token' => $token,
@@ -396,7 +396,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
         $user->delete();
 
-        $response = $this->postJson('/me', [
+        $response = $this->postJson('api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'Authorization' => 'Bearer '.$token,
@@ -414,7 +414,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
         $user->delete();
 
-        $response = $this->call('POST', '/me', [
+        $response = $this->call('POST', 'api/get-current-user', [
             'model_type' => TestUserMail::class,
         ], [
             'nemesis_token' => $token,

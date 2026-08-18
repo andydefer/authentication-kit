@@ -45,7 +45,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             }
         );
 
-        $this->app['router']->middleware(['validate.mail.authenticatable'])->post('/api/login', action_route(
+        $this->app['router']->middleware(['validate.mail.authenticatable'])->post('/api/email-login', action_route(
             EmailLoginRequest::class,
             EmailLoginAction::class
         ));
@@ -94,7 +94,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(200);
         $response->assertJsonStructure([
@@ -125,7 +125,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(400);
         $response->assertJson([
@@ -142,7 +142,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'email' => 'john@example.com',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(400);
         $response->assertJson([
@@ -160,7 +160,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'WrongPassword!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(401);
         $response->assertJson([
@@ -178,7 +178,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(401);
         $response->assertJson([
@@ -202,7 +202,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(200);
     }
@@ -215,7 +215,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(500);
         $response->assertJson([
@@ -232,7 +232,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(400);
         $response->assertJson([
@@ -250,7 +250,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(400);
         $response->assertJson([
@@ -282,7 +282,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(200);
 
@@ -311,7 +311,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(200);
 
@@ -337,7 +337,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(200);
 
@@ -368,7 +368,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $response = $this->postJson('/api/login', $payload);
+        $response = $this->postJson('/api/email-login', $payload);
 
         $response->assertStatus(200);
 
@@ -404,7 +404,7 @@ final class EmailLoginActionTest extends IntegrationTestCase
             'password' => 'Password123!',
         ];
 
-        $loginResponse = $this->postJson('/api/login', $payload);
+        $loginResponse = $this->postJson('/api/email-login', $payload);
         $loginResponse->assertStatus(200);
 
         $cookieValue = $this->getCookieValue($loginResponse, 'nemesis_token');

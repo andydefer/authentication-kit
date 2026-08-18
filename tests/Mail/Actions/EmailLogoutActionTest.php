@@ -46,7 +46,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             }
         );
 
-        $this->app['router']->middleware(['validate.mail.authenticatable', 'nemesis.token'])->post('/api/logout', action_route(
+        $this->app['router']->middleware(['validate.mail.authenticatable', 'nemesis.token'])->post('/api/email-logout', action_route(
             EmailLogoutRequest::class,
             EmailLogoutAction::class
         ));
@@ -159,7 +159,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => $plainToken,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => 'Bearer '.$plainToken,
         ]);
 
@@ -208,7 +208,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => $plainToken,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => 'Bearer '.$plainToken,
         ]);
 
@@ -256,7 +256,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => $plainToken,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => 'Bearer '.$plainToken,
         ]);
 
@@ -303,7 +303,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => $plainToken,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => 'Bearer '.$plainToken,
         ]);
 
@@ -363,7 +363,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => $plainToken,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => 'Bearer '.$plainToken,
         ]);
 
@@ -390,7 +390,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => 'non-existent-token-1234567890',
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => $bearerToken,
         ]);
 
@@ -408,7 +408,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => $token,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => $bearerToken,
         ]);
 
@@ -426,7 +426,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'model_type' => TestUserMail::class,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => $bearerToken,
         ]);
 
@@ -443,7 +443,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'token' => $token,
         ];
 
-        $response = $this->postJson('/api/logout', $payload, [
+        $response = $this->postJson('/api/email-logout', $payload, [
             'Authorization' => $bearerToken,
         ]);
 

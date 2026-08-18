@@ -35,7 +35,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'default_from_name' => 'Test App',
         ]);
 
-        $this->app['router']->post('/api/email/verification', action_route(
+        $this->app['router']->post('/api/send-email-verification', action_route(
             SendEmailVerificationRequest::class,
             SendEmailVerificationAction::class
         ));
@@ -68,7 +68,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -102,7 +102,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -123,7 +123,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => 1,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['model_type']);
@@ -135,7 +135,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'model_type' => TestUserMail::class,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['auth_id']);
@@ -152,7 +152,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => 1,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['model_type']);
@@ -168,7 +168,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => 99999,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(404);
         $response->assertJson([
@@ -187,7 +187,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(404);
         $response->assertJson([
@@ -210,7 +210,7 @@ final class SendEmailVerificationActionTest extends IntegrationTestCase
             'auth_id' => $user->id,
         ];
 
-        $response = $this->postJson('/api/email/verification', $payload);
+        $response = $this->postJson('/api/send-email-verification', $payload);
 
         $response->assertStatus(200);
     }

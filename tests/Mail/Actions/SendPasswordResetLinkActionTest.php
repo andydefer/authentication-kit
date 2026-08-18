@@ -36,7 +36,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'default_from_name' => 'Test App',
         ]);
 
-        $this->app['router']->post('/api/password/forgot', action_route(
+        $this->app['router']->post('/api/send-password-reset-link', action_route(
             SendPasswordResetLinkRequest::class,
             SendPasswordResetLinkAction::class
         ));
@@ -71,7 +71,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => $user->email,
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -103,7 +103,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => 'nonexistent@example.com',
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(400);
         $response->assertJson([
@@ -124,11 +124,11 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         ];
 
         // ✅ Premier envoi - OK
-        $response1 = $this->postJson('/api/password/forgot', $payload);
+        $response1 = $this->postJson('/api/send-password-reset-link', $payload);
         $response1->assertStatus(200);
 
         // ✅ Second envoi - Rate limit atteint (seuil = 1)
-        $response2 = $this->postJson('/api/password/forgot', $payload);
+        $response2 = $this->postJson('/api/send-password-reset-link', $payload);
         $response2->assertStatus(200);
         $response2->assertJson([
             'message' => 'Password reset OTP sent successfully',
@@ -157,7 +157,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'model_type' => TestUserMail::class,
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['email']);
@@ -170,7 +170,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => 'invalid-email',
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['email']);
@@ -189,7 +189,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => strtoupper($user->email),
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -218,7 +218,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => '  '.$user->email.'  ',
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         // ✅ Le middleware TrimStrings nettoie les espaces
         $response->assertStatus(200);
@@ -244,7 +244,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => 'john@example.com',
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -276,7 +276,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         $otpsBefore = $this->otpService->getAllFor($user, $purpose);
         $this->assertCount(0, $otpsBefore);
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(200);
 
@@ -299,7 +299,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => $user->email,
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -328,7 +328,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => 'john@example.com',
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['model_type']);
@@ -341,7 +341,7 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => 'john@example.com',
         ];
 
-        $response = $this->postJson('/api/password/forgot', $payload);
+        $response = $this->postJson('/api/send-password-reset-link', $payload);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['model_type']);
