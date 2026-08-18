@@ -143,6 +143,7 @@ final class EmailRegisterAction extends AbstractAction
                 );
 
                 $token = $plainToken;
+                dd($record->with_token, $token);
             }
 
             return ResponseFactory::json(
