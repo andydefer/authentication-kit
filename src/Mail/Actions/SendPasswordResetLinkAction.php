@@ -20,8 +20,8 @@ use Exception;
  * Handles sending a password reset link (OTP) to a user.
  *
  * This action sends a password reset OTP to the user's email address.
- * For security reasons, it always returns a 200 response regardless of
- * whether the user exists or the OTP was sent successfully.
+ * For security reasons, it returns a generic error message regardless of
+ * whether the user exists or the OTP failed to send.
  */
 final class SendPasswordResetLinkAction extends AbstractAction
 {
@@ -34,6 +34,8 @@ final class SendPasswordResetLinkAction extends AbstractAction
     private ?string $errorMessage = null;
 
     private ?string $errorClass = null;
+
+    private ?string $errorType = null;
 
     public function __construct(
         private readonly MailAuthenticationInterface $authService,
@@ -62,9 +64,23 @@ final class SendPasswordResetLinkAction extends AbstractAction
         $this->email = $record->email;
         $this->userFound = $this->authService->userExists($record->email);
 
+        // ✅ Vérifier si l'utilisateur existe AVANT d'envoyer l'OTP
+        if (! $this->userFound) {
+            // ✅ On retourne une erreur générique pour ne pas révéler l'existence de l'utilisateur
+            return ResponseFactory::json(
+                new ErrorResponseData(
+                    message: 'We were unable to process your request. Please try again.',
+                    status: 400,
+                    errorCode: 'reset_link_failed'
+                ),
+                400
+            );
+        }
+
         try {
             $this->success = $this->authService->sendPasswordResetOtp($record->email);
 
+            // ✅ Succès : On retourne une 200
             return ResponseFactory::json(
                 new PasswordResetLinkSentData(
                     message: 'Password reset OTP sent successfully',
@@ -78,10 +94,12 @@ final class SendPasswordResetLinkAction extends AbstractAction
             $this->success = false;
             $this->errorMessage = $e->getMessage();
             $this->errorClass = get_class($e);
+            $this->errorType = $this->errorClass;
 
+            // ✅ Erreur technique : On retourne une erreur générique
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: ErrorCode::RESET_LINK_ERROR->message(),
+                    message: 'We were unable to send the reset link. Please try again.',
                     status: ErrorCode::RESET_LINK_ERROR->getHttpStatusCode(),
                     errorCode: ErrorCode::RESET_LINK_ERROR->value
                 ),

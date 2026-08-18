@@ -90,7 +90,13 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         $this->assertCount(1, $otps);
     }
 
-    public function test_send_password_reset_link_returns_200_even_if_user_not_found(): void
+    /**
+     * 🔒 SECURITY: On retourne une erreur 400 avec un message générique
+     * pour ne pas révéler si l'utilisateur existe ou non.
+     *
+     * Le comportement a changé : on ne retourne plus 200 pour les utilisateurs inexistants.
+     */
+    public function test_send_password_reset_link_returns_400_if_user_not_found(): void
     {
         $payload = [
             'model_type' => TestUserMail::class,
@@ -99,11 +105,13 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/password/forgot', $payload);
 
-        $response->assertStatus(200);
+        $response->assertStatus(400);
         $response->assertJson([
-            'message' => 'Password reset OTP sent successfully',
-            'email' => 'nonexistent@example.com',
+            'message' => 'We were unable to process your request. Please try again.',
         ]);
+
+        // ✅ On vérifie que l'email n'est PAS révélé dans la réponse
+        $response->assertJsonMissing(['email' => 'nonexistent@example.com']);
     }
 
     public function test_send_password_reset_link_rate_limit_protects_user_privacy(): void
@@ -220,8 +228,17 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         ]);
     }
 
-    public function test_send_password_reset_link_returns_200_when_model_type_not_needed(): void
+    /**
+     * ✅ Le test vérifie que l'email est envoyé si l'utilisateur existe.
+     * Le nom du test doit refléter le nouveau comportement.
+     */
+    public function test_send_password_reset_link_returns_200_when_user_exists_and_model_type_is_valid(): void
     {
+        // Créer un utilisateur existant
+        $this->createUser([
+            'email' => 'john@example.com',
+        ]);
+
         $payload = [
             'model_type' => TestUserMail::class,
             'email' => 'john@example.com',
