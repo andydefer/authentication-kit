@@ -133,12 +133,10 @@ final class MailServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadRoutesFrom(__DIR__.'/routes.php');
-
         if ($this->app->runningInConsole()) {
             $this->publishes([
-                __DIR__.'/routes.php' => base_path('routes/authentication-kit.php'),
-            ], 'authentication-kit-routes');
+                __DIR__.'/routes.php' => base_path('routes/authentication-mail-kit.php'),
+            ], 'authentication-mail-kit-routes');
         }
     }
 }

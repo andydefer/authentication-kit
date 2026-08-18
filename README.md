@@ -64,7 +64,7 @@ php artisan vendor:publish --tag=authentication-kit-config
 ### Publier les routes
 
 ```bash
-php artisan vendor:publish --tag=authentication-kit-routes
+php artisan vendor:publish --tag=authentication-mail-kit-routes
 ```
 
 ---
