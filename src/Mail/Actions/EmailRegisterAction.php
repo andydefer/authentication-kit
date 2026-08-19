@@ -149,7 +149,9 @@ final class EmailRegisterAction extends AbstractAction
 
             return ResponseFactory::json(
                 new AuthRegisteredData(
-                    message: $record->with_token ? 'with_token est a true' : 'with_token est a false'.json_encode(request()->all()),
+                    message: $record->with_token
+                        ? 'User registered successfully with token'
+                        : 'User registered successfully without token',
                     auth: DataObject::from($auth->nemesisFormat()),
                     token: $token,
                 ),
