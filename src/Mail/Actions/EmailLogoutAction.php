@@ -202,7 +202,7 @@ final class EmailLogoutAction extends AbstractAction
         }
 
         $this->authId = $auth->getKey();
-        $this->email = $auth->email ?? null;
+        $this->email = action_normalizer_chain(true)->normalize($auth->email) ?? null;
         $this->success = true;
 
         return ResponseFactory::json(

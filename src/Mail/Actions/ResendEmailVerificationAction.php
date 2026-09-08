@@ -104,7 +104,7 @@ final class ResendEmailVerificationAction extends AbstractAction
                 );
             }
 
-            $this->email = $authenticatable->email ?? null;
+            $this->email = action_normalizer_chain()->normalize($authenticatable->email) ?? null;
 
             if ($this->authService->isEmailVerified($authenticatable)) {
                 $this->success = true;

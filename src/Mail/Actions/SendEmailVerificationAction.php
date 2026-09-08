@@ -103,7 +103,7 @@ final class SendEmailVerificationAction extends AbstractAction
                 );
             }
 
-            $this->email = $authenticatable->email ?? null;
+            $this->email = action_normalizer_chain(true)->normalize($authenticatable->email) ?? null;
 
             $isVerified = $this->authService->isEmailVerified($authenticatable);
 
