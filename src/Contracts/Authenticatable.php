@@ -9,4 +9,6 @@ use AndyDefer\Nemesis\Contracts\MustNemesis;
 interface Authenticatable extends MustNemesis
 {
     public function getKey();
+
+    public function getMorphClass();
 }
