@@ -13,6 +13,7 @@ use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterfa
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\NotificationMessageRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\DomainStructures\Interfaces\Transformable;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\LaravelNotification\Builders\NotifiableBuilder;
 use AndyDefer\LaravelNotification\Channels\MailChannel;
@@ -299,7 +300,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $otp = $this->otpService->create($user, $purpose);
 
         $this->sendNotification(
-            $this->buildPasswordResetNotification($user->email, $otp->code)
+            $this->buildPasswordResetNotification(($user->email), $otp->code)
         );
 
         $this->logRepository->logPasswordResetLinkSent(
@@ -494,7 +495,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
     /**
      * {@inheritDoc}
      */
-    public function userExists(string $email): bool
+    public function userExists(string|Transformable $email): bool
     {
         $modelClass = $this->modelClass;
 
@@ -530,7 +531,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      *
      * Use case: check if account is locked, 2FA, IP whitelist.
      */
-    protected function beforeLogin(string $email, string $password): void
+    protected function beforeLogin(string|Transformable $email, string|Transformable $password): void
     {
         // Can be overridden by user
     }
@@ -550,7 +551,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      *
      * Use case: log activity, validate token.
      */
-    protected function beforeLogout(Authenticatable&Model $authenticatable, string $plainToken): void
+    protected function beforeLogout(Authenticatable&Model $authenticatable, string|Transformable $plainToken): void
     {
         // Can be overridden by user
     }
@@ -570,7 +571,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      *
      * Use case: check if email is allowed to reset password.
      */
-    protected function beforeSendPasswordResetOtp(string $email): void
+    protected function beforeSendPasswordResetOtp(string|Transformable $email): void
     {
         // Can be overridden by user
     }
@@ -580,7 +581,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      *
      * Use case: notify admin on failure.
      */
-    protected function afterSendPasswordResetOtp(string $email, bool $success): void
+    protected function afterSendPasswordResetOtp(string|Transformable $email, bool $success): void
     {
         // Can be overridden by user
     }
@@ -590,7 +591,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      *
      * Use case: additional password validation.
      */
-    protected function beforeResetPassword(string $email, string $code, string $password): void
+    protected function beforeResetPassword(string|Transformable $email, string|Transformable $code, string|Transformable $password): void
     {
         // Can be overridden by user
     }
@@ -610,7 +611,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      *
      * Use case: additional checks before verification.
      */
-    protected function beforeVerifyEmail(string $email, string $code): void
+    protected function beforeVerifyEmail(string|Transformable $email, string|Transformable $code): void
     {
         // Can be overridden by user
     }
@@ -638,12 +639,14 @@ class MailAuthenticationService implements MailAuthenticationInterface
      * @param  string  $otp  The OTP code
      * @return NotificationMessageRecord The notification message record
      */
-    protected function buildPasswordResetNotification(string $email, string $otp): NotificationMessageRecord
+    protected function buildPasswordResetNotification(string|Transformable $email, string|Transformable $otp): NotificationMessageRecord
     {
+        $normalizedOtp = action_normalizer_chain(true)->normalize($otp);
+
         return NotificationMessageRecord::from([
             'email' => $email,
             'subject' => 'Password Reset Code',
-            'body' => "Your password reset code is: {$otp}",
+            'body' => "Your password reset code is: {$normalizedOtp}",
         ]);
     }
 
@@ -656,12 +659,14 @@ class MailAuthenticationService implements MailAuthenticationInterface
      * @param  string  $otp  The OTP code
      * @return NotificationMessageRecord The notification message record
      */
-    protected function buildEmailVerificationNotification(string $email, string $otp): NotificationMessageRecord
+    protected function buildEmailVerificationNotification(string|Transformable $email, string|Transformable $otp): NotificationMessageRecord
     {
+        $normalizedOtp = action_normalizer_chain(true)->normalize($otp);
+
         return NotificationMessageRecord::from([
             'email' => $email,
             'subject' => 'Email Verification Code',
-            'body' => "Your email verification code is: {$otp}",
+            'body' => "Your email verification code is: {$normalizedOtp}",
         ]);
     }
 
