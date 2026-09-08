@@ -189,10 +189,10 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $record = NemesisTokenRecord::from([
             'name' => 'auth-login',
             'source' => 'login',
-            'metadata' => new StrictDataObject([
+            'metadata' => [
                 'auth_id' => $user->getKey(),
-                'email' => $user->email,
-            ]),
+                'email' => action_normalizer_chain()->normalize($user->email),
+            ],
         ]);
 
         [$token, $plainToken] = $this->nemesis->createWithPlainToken($record, $user);
@@ -212,6 +212,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function logout(Authenticatable&Model $authenticatable, string $plainToken): bool
     {
+
         $this->beforeLogout($authenticatable, $plainToken);
 
         $token = $this->nemesis->getTokenByPlainText($plainToken, $authenticatable);
@@ -219,7 +220,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         if ($token === null) {
             $this->logRepository->logoutFailure(
                 modelClass: $this->modelClass,
-                email: $authenticatable->email ?? 'unknown',
+                email: $authenticatable->getRawOriginal('email', 'unknown'),
                 error: 'Token not found',
                 errorType: ErrorType::TOKEN_NOT_FOUND,
             );
@@ -233,7 +234,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
             $this->logRepository->logoutSuccess(
                 authId: $authenticatable->getKey(),
                 modelClass: $this->modelClass,
-                email: $authenticatable->email ?? 'unknown',
+                email: $authenticatable->getRawOriginal('email', 'unknown'),
             );
 
             if ($this->config->shouldStoreTokenInCookie()) {
@@ -244,7 +245,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         } else {
             $this->logRepository->logoutFailure(
                 modelClass: $this->modelClass,
-                email: $authenticatable->email ?? 'unknown',
+                email: $authenticatable->getRawOriginal('email', 'unknown'),
                 error: 'Failed to revoke token',
                 errorType: ErrorType::TOKEN_REVOKE_FAILED,
             );
@@ -371,7 +372,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
     {
         if ($this->isEmailVerified($authenticatable)) {
             $this->logRepository->logVerificationSuccess(
-                email: $authenticatable->email ?? 'unknown',
+                email: $authenticatable->getRawOriginal('email', 'unknown'),
                 modelClass: $this->modelClass,
                 alreadyVerified: true,
             );
@@ -388,7 +389,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
         if ($this->otpService->isRateLimited($authenticatable, $purpose, $rateLimitAttempts, $window)) {
             $this->logRepository->logVerificationFailure(
-                email: $authenticatable->email ?? 'unknown',
+                email: $authenticatable->getRawOriginal('email', 'unknown'),
                 modelClass: $this->modelClass,
                 error: 'Rate limit exceeded',
                 errorType: ErrorType::RATE_LIMIT_EXCEEDED,
