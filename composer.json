@@ -14,7 +14,7 @@
         "andydefer/directive-forge": "^2.17.44",
         "jenssegers/agent": "^2.6",
         "andydefer/laravel-nemesis": "^1.16.8",
-        "andydefer/laravel-otp": "^1.2.11",
+        "andydefer/laravel-otp": "^1.2.12",
         "andydefer/laravel-notification": "^1.6.34"
     },
     "require-dev": {
