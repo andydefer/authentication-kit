@@ -169,7 +169,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
         ]);
     }
 
-    public function test_resend_email_verification_returns_500_when_resend_fails(): void
+    public function test_resend_email_verification_returns_200_when_resend_fails(): void
     {
         $user = $this->createUser();
 
@@ -183,7 +183,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
 
         $response2 = $this->postJson('/api/resend-email-verification', $payload);
 
-        $this->assertContains($response2->status(), [200, 500]);
+        $this->assertContains($response2->status(), [200]);
     }
 
     public function test_resend_email_verification_returns_422_when_exception_thrown_due_to_invalid_model(): void
@@ -251,7 +251,7 @@ final class ResendEmailVerificationActionTest extends IntegrationTestCase
 
         $response2 = $this->postJson('/api/resend-email-verification', $payload);
 
-        $this->assertContains($response2->status(), [200, 500]);
+        $this->assertContains($response2->status(), [200]);
     }
 
     // ============================================================================

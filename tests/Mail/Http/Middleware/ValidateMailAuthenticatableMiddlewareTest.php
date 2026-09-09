@@ -111,10 +111,10 @@ final class ValidateMailAuthenticatableMiddlewareTest extends IntegrationTestCas
 
         $response = $this->postJson('/test-validate', $payload);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
         $response->assertJson([
             'message' => 'Model NonExistentClass does not exist',
-            'status' => 500,
+            'status' => 422,
             'errorCode' => 'MODEL_NOT_FOUND',
         ]);
     }
@@ -129,10 +129,10 @@ final class ValidateMailAuthenticatableMiddlewareTest extends IntegrationTestCas
 
         $response = $this->postJson('/test-validate', $payload);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
         $response->assertJson([
             'message' => 'Model stdClass must implement '.MailAuthenticatable::class,
-            'status' => 500,
+            'status' => 422,
             'errorCode' => 'INVALID_MODEL',
         ]);
     }

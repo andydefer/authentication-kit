@@ -170,7 +170,7 @@ enum ErrorCode: string
             self::VERIFICATION_OTP_RESEND_FAILED,
             self::VERIFICATION_EMAIL_RESEND_ERROR,
             self::RESET_LINK_ERROR,
-            self::VERIFY_EMAIL_ERROR => 500,
+            self::VERIFY_EMAIL_ERROR => 422,
 
             self::PASSWORD_CONFIRMATION_MISMATCH,
             self::VALIDATION_ERROR => 422,

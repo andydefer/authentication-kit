@@ -48,10 +48,10 @@ final class ValidateMailAuthenticatableMiddleware
             return new JsonResponse(
                 (new ErrorResponseData(
                     message: "Model {$modelType} does not exist",
-                    status: 500,
+                    status: 422,
                     errorCode: 'MODEL_NOT_FOUND'
                 ))->toArray(),
-                500
+                422
             );
         }
 
@@ -59,10 +59,10 @@ final class ValidateMailAuthenticatableMiddleware
             return new JsonResponse(
                 (new ErrorResponseData(
                     message: "Model {$modelType} must implement ".MailAuthenticatable::class,
-                    status: 500,
+                    status: 422,
                     errorCode: 'INVALID_MODEL'
                 ))->toArray(),
-                500
+                422
             );
         }
 

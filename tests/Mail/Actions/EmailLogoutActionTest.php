@@ -434,7 +434,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
         $response->assertJsonValidationErrors(['token']);
     }
 
-    public function test_logout_returns_500_when_model_type_does_not_exist(): void
+    public function test_logout_returns_422_when_model_type_does_not_exist(): void
     {
         [$user, $token, $bearerToken] = $this->createUserAndGetTokenWithBearer();
 
@@ -447,7 +447,7 @@ final class EmailLogoutActionTest extends IntegrationTestCase
             'Authorization' => $bearerToken,
         ]);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
         $response->assertJson([
             'errorCode' => 'MODEL_NOT_FOUND',
         ]);

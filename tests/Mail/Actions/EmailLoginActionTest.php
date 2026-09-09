@@ -217,10 +217,10 @@ final class EmailLoginActionTest extends IntegrationTestCase
 
         $response = $this->postJson('/api/email-login', $payload);
 
-        $response->assertStatus(500);
+        $response->assertStatus(422);
         $response->assertJson([
             'message' => 'Model NonExistentClass does not exist',
-            'status' => 500,
+            'status' => 422,
             'errorCode' => 'MODEL_NOT_FOUND',
         ]);
     }

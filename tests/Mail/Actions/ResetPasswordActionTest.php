@@ -391,7 +391,7 @@ final class ResetPasswordActionTest extends IntegrationTestCase
     }
 
     // ============================================================================
-    // Tests - Erreurs 500
+    // Tests - Erreurs 422
     // ============================================================================
 
     public function test_reset_password_returns_422_when_model_type_invalid(): void

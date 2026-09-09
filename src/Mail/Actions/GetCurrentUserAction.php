@@ -123,10 +123,10 @@ final class GetCurrentUserAction extends AbstractAction
                 return ResponseFactory::json(
                     new ErrorResponseData(
                         message: 'User data format not available',
-                        status: 500,
+                        status: 422,
                         errorCode: 'USER_FORMAT_ERROR'
                     ),
-                    500
+                    422
                 );
             }
 
