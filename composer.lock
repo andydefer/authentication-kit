@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7d15f60ecbf7b74154785849e31964b8",
+    "content-hash": "086f2cc4f524ad576f835a4a30e785ef",
     "packages": [
         {
             "name": "andydefer/algo-kit",
@@ -637,16 +637,16 @@
         },
         {
             "name": "andydefer/laravel-otp",
-            "version": "v1.2.11",
+            "version": "v1.2.12",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-otp.git",
-                "reference": "8a6539e4893639abf3264fc953d2cff34d0dda4d"
+                "reference": "0f2d10a22f9bf1fce18c9f42d524a8f5d04b911e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-otp/zipball/8a6539e4893639abf3264fc953d2cff34d0dda4d",
-                "reference": "8a6539e4893639abf3264fc953d2cff34d0dda4d",
+                "url": "https://api.github.com/repos/andydefer/laravel-otp/zipball/0f2d10a22f9bf1fce18c9f42d524a8f5d04b911e",
+                "reference": "0f2d10a22f9bf1fce18c9f42d524a8f5d04b911e",
                 "shasum": ""
             },
             "require": {
@@ -691,9 +691,9 @@
             "description": "Laravel package providing OTP (One-Time Password) management with Repository pattern, DTOs, Enums, and Value Objects.",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-otp/issues",
-                "source": "https://github.com/andydefer/laravel-otp/tree/v1.2.11"
+                "source": "https://github.com/andydefer/laravel-otp/tree/v1.2.12"
             },
-            "time": "2026-09-05T10:55:19+00:00"
+            "time": "2026-09-09T09:00:27+00:00"
         },
         {
             "name": "andydefer/laravel-repository",

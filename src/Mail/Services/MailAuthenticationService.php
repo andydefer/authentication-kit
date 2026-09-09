@@ -11,12 +11,14 @@ use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\NotificationMessageRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Interfaces\Transformable;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\LaravelNotification\Builders\NotifiableBuilder;
 use AndyDefer\LaravelNotification\Channels\MailChannel;
+use AndyDefer\LaravelNotification\Collections\SendResultCollection;
 use AndyDefer\LaravelNotification\ValueObjects\MessageBodyVO;
 use AndyDefer\LaravelNotification\ValueObjects\MessageSubjectVO;
 use AndyDefer\LaravelNotification\ValueObjects\NotificationMessageVO;
@@ -91,7 +93,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
     /**
      * {@inheritDoc}
      */
-    public function register(AbstractRecord $record): Model&Authenticatable
+    public function register(AbstractRecord $record): array
     {
         if (! $record instanceof EmailRegisterAuthRecord) {
             throw new \InvalidArgumentException('Invalid record type');
@@ -116,6 +118,9 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $modelClass = $this->modelClass;
 
         $user = $modelClass::generate($data);
+
+        $token = null;
+        $plainToken = null;
 
         // ✅ Créer le token si with_token est true
         if ($record->with_token) {
@@ -144,18 +149,23 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
         $this->afterRegister($user, $record);
 
-        return $user;
+        return [
+            'user' => $user,
+            'token' => $token,
+            'plain_token' => $plainToken,
+        ];
     }
 
     /**
      * {@inheritDoc}
      */
-    public function login(string $email, string $password): ?NemesisTokenRecord
+    public function login(string $email, string $password): ?LoginResultRecord
     {
         $this->beforeLogin($email, $password);
 
         $modelClass = $this->modelClass;
 
+        /** @var Model $user */
         $user = $modelClass::where('email', strtolower($email))->first();
 
         if ($user === null) {
@@ -191,20 +201,22 @@ class MailAuthenticationService implements MailAuthenticationInterface
             'source' => 'login',
             'metadata' => [
                 'auth_id' => $user->getKey(),
-                'email' => action_normalizer_chain()->normalize($user->email),
+                'email' => $user->getRawOriginal('email'),
             ],
         ]);
 
         [$token, $plainToken] = $this->nemesis->createWithPlainToken($record, $user);
 
         if ($this->config->shouldStoreTokenInCookie()) {
-
             $this->cookieStorage->store($plainToken);
         }
 
         $this->afterLogin($user);
 
-        return NemesisTokenRecord::from(action_normalizer_chain(true)->normalize($token));
+        return new LoginResultRecord(
+            token_record: NemesisTokenRecord::from($this->normalize($token)),
+            plain_token: $plainToken,
+        );
     }
 
     /**
@@ -285,6 +297,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $otpTtl = $purpose->getTtl() ?? 600;
         $window = now()->subSeconds($otpTtl);
 
+        // ✅ Vérifier le rate limit
         if ($this->otpService->isRateLimited($user, $purpose, $rateLimitAttempts, $window)) {
             $this->logRepository->logPasswordResetLinkSent(
                 email: $email,
@@ -300,18 +313,18 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
         $otp = $this->otpService->create($user, $purpose);
 
-        $this->sendNotification(
-            $this->buildPasswordResetNotification(($user->email), $otp->code)
+        $result = $this->sendNotification(
+            $this->buildPasswordResetNotification($this->normalize($user->email), $this->normalize($otp->code))
         );
 
         $this->logRepository->logPasswordResetLinkSent(
             email: $email,
-            success: true,
+            success: $result->allSuccess(),
         );
 
-        $this->afterSendPasswordResetOtp($email, true);
+        $this->afterSendPasswordResetOtp($email, $result->allSuccess());
 
-        return true;
+        return $result->allSuccess();
     }
 
     /**
@@ -642,7 +655,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      */
     protected function buildPasswordResetNotification(string|Transformable $email, string|Transformable $otp): NotificationMessageRecord
     {
-        $normalizedOtp = action_normalizer_chain(true)->normalize($otp);
+        $normalizedOtp = $this->normalize($otp);
 
         return NotificationMessageRecord::from([
             'email' => $email,
@@ -662,7 +675,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
      */
     protected function buildEmailVerificationNotification(string|Transformable $email, string|Transformable $otp): NotificationMessageRecord
     {
-        $normalizedOtp = action_normalizer_chain(true)->normalize($otp);
+        $normalizedOtp = $this->normalize($otp);
 
         return NotificationMessageRecord::from([
             'email' => $email,
@@ -694,14 +707,14 @@ class MailAuthenticationService implements MailAuthenticationInterface
      *
      * @param  NotificationMessageRecord  $record  The notification message record
      */
-    private function sendNotification(NotificationMessageRecord $record): void
+    private function sendNotification(NotificationMessageRecord $record): SendResultCollection
     {
         $message = new NotificationMessageVO(
             body: new MessageBodyVO($record->body),
             subject: new MessageSubjectVO($record->subject),
         );
 
-        NotifiableBuilder::create()
+        return NotifiableBuilder::create()
             ->to(MailChannel::class, $record->email)
             ->subject($message->getSubjectValue())
             ->body($message->getBodyValue())
@@ -752,5 +765,10 @@ class MailAuthenticationService implements MailAuthenticationInterface
             ttl: 600,
             maxAttempts: 3
         );
+    }
+
+    private function normalize(mixed $value): mixed
+    {
+        return action_normalizer_chain(true)->normalize($value);
     }
 }

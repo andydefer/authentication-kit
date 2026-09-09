@@ -1,5 +1,7 @@
 <?php
 
+// src/Mail/Actions/EmailRegisterAction.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Actions;
@@ -10,7 +12,6 @@ use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterfa
 use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
-use AndyDefer\AuthenticationKit\Enums\TokenSource;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\AuthRegisteredData;
@@ -19,10 +20,6 @@ use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\DataObject;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
-use AndyDefer\DomainStructures\Utils\StrictDataObject;
-use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
-use AndyDefer\Nemesis\Records\NemesisTokenRecord;
-use AndyDefer\Nemesis\Services\NemesisService;
 use Exception;
 use Illuminate\Validation\ValidationException;
 
@@ -46,10 +43,9 @@ final class EmailRegisterAction extends AbstractAction
 
     private ?string $errorMessage = null;
 
-    private ?string $errorClass = null;
+    private ?ErrorType $errorType = null;
 
     public function __construct(
-        private readonly NemesisInterface $nemesis,
         private readonly LogRepositoryInterface $logRepository,
         private readonly AgentInterface $agent,
         private readonly AuthenticationKitConfigInterface $config,
@@ -121,31 +117,12 @@ final class EmailRegisterAction extends AbstractAction
             /** @var MailAuthenticatable $modelClass */
             $service = $modelClass::getMailAuthService();
 
-            $auth = $service->register($record);
+            $result = $service->register($record);
+
+            $auth = $result['user'];
+            $plainToken = $result['plain_token'];
 
             $this->authId = $auth->getKey();
-
-            $token = null;
-
-            if ($record->with_token) {
-                [$tokenModel, $plainToken] = $this->nemesis->createWithPlainToken(
-                    new NemesisTokenRecord(
-                        name: $this->config->getTokenName(),
-                        source: TokenSource::REGISTER->value,
-                        metadata: new StrictDataObject([
-                            'device_type' => $this->agent->deviceType(),
-                            'platform' => $this->agent->platform(),
-                            'browser' => $this->agent->browser(),
-                            'ip' => $this->ip,
-                            'user_agent' => $this->userAgent,
-                        ]),
-                    ),
-                    $auth
-                );
-
-                $token = $plainToken;
-                NemesisService::class;
-            }
 
             return ResponseFactory::json(
                 new AuthRegisteredData(
@@ -153,14 +130,14 @@ final class EmailRegisterAction extends AbstractAction
                         ? 'User registered successfully with token'
                         : 'User registered successfully without token',
                     auth: DataObject::from($auth->nemesisFormat()),
-                    token: $token,
+                    token: $plainToken,
                 ),
                 201
             );
 
         } catch (ValidationException $e) {
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
+            $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
@@ -173,7 +150,7 @@ final class EmailRegisterAction extends AbstractAction
             );
         } catch (Exception $e) {
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
+            $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
                 new ErrorResponseData(

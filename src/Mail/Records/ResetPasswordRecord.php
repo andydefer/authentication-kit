@@ -19,5 +19,6 @@ final class ResetPasswordRecord extends AbstractRecord
         public readonly string $token,
         public readonly string $password,
         public readonly string $password_confirmation,
+        public readonly string $model_type,
     ) {}
 }

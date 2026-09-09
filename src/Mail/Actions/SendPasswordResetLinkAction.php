@@ -1,5 +1,7 @@
 <?php
 
+// src/Mail/Actions/SendPasswordResetLinkAction.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Actions;
@@ -7,11 +9,13 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
+use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\PasswordResetLinkSentData;
 use AndyDefer\AuthenticationKit\Mail\Records\SendPasswordResetLinkRecord;
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use AndyDefer\AuthenticationKit\Mail\Utils\AuthenticationResolver;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
@@ -33,14 +37,34 @@ final class SendPasswordResetLinkAction extends AbstractAction
 
     private ?string $errorMessage = null;
 
-    private ?string $errorClass = null;
+    private ?ErrorType $errorType = null;
 
-    private ?string $errorType = null;
+    private ?MailAuthenticationService $authService = null;
+
+    private ?string $modelType = null;
 
     public function __construct(
-        private readonly MailAuthenticationInterface $authService,
         private readonly LogRepositoryInterface $logRepository,
     ) {}
+
+    /**
+     * Prepares the action by extracting record data.
+     *
+     * @param  AbstractRecord  $record  The send password reset link request record
+     *
+     * @throws \InvalidArgumentException When the record type is invalid
+     */
+    protected function before(AbstractRecord $record): void
+    {
+        if (! $record instanceof SendPasswordResetLinkRecord) {
+            throw new \InvalidArgumentException('Invalid record type');
+        }
+
+        $this->modelType = $record->model_type;
+        $this->email = $record->email;
+
+        $this->authService = AuthenticationResolver::resolveService($this->modelType);
+    }
 
     /**
      * Processes the send password reset link request.
@@ -61,17 +85,37 @@ final class SendPasswordResetLinkAction extends AbstractAction
             );
         }
 
+        // ✅ Vérifier que le service est disponible
+        if ($this->authService === null) {
+            $this->success = false;
+            $this->errorMessage = ErrorCode::INVALID_MODEL->message();
+            $this->errorType = ErrorType::INVALID_MODEL;
+
+            return ResponseFactory::json(
+                new ErrorResponseData(
+                    message: ErrorCode::INVALID_MODEL->message(),
+                    status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_MODEL->value
+                ),
+                ErrorCode::INVALID_MODEL->getHttpStatusCode()
+            );
+        }
+
         $this->email = $record->email;
         $this->userFound = $this->authService->userExists($record->email);
 
         // ✅ Vérifier si l'utilisateur existe AVANT d'envoyer l'OTP
         if (! $this->userFound) {
+            $this->success = false;
+            $this->errorMessage = 'User not found';
+            $this->errorType = ErrorType::USER_NOT_FOUND;
+
             // ✅ On retourne une erreur générique pour ne pas révéler l'existence de l'utilisateur
             return ResponseFactory::json(
                 new ErrorResponseData(
                     message: 'We were unable to process your request. Please try again.',
                     status: 400,
-                    errorCode: 'reset_link_failed'
+                    errorCode: 'RESET_LINK_FAILED'
                 ),
                 400
             );
@@ -93,8 +137,7 @@ final class SendPasswordResetLinkAction extends AbstractAction
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
-            $this->errorType = $this->errorClass;
+            $this->errorType = ErrorType::RATE_LIMIT_EXCEEDED;
 
             // ✅ Erreur technique : On retourne une erreur générique
             return ResponseFactory::json(

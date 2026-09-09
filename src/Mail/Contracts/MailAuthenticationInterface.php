@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Mail\Contracts;
 
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
+use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
-use AndyDefer\Nemesis\Records\NemesisTokenRecord;
+use AndyDefer\DomainStructures\Interfaces\Transformable;
+use AndyDefer\Nemesis\Models\NemesisToken;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -21,18 +23,19 @@ interface MailAuthenticationInterface
      * Registers a new authenticatable entity.
      *
      * @param  AbstractRecord  $record  The registration record containing user data
-     * @return Model&Authenticatable The newly created authenticatable model
+     * @return array{user: Model&Authenticatable, token: NemesisToken|null, plain_token: string|null}
+     *                                                                                                The newly created authenticatable model, token model and plain token
      */
-    public function register(AbstractRecord $record): Model&Authenticatable;
+    public function register(AbstractRecord $record): array;
 
     /**
      * Authenticates a user with email and password.
      *
      * @param  string  $email  The user's email address
      * @param  string  $password  The user's password
-     * @return NemesisTokenRecord|null The authentication token record on success, null on failure
+     * @return LoginResultRecord|null The authentication token record on success, null on failure
      */
-    public function login(string $email, string $password): ?NemesisTokenRecord;
+    public function login(string $email, string $password): ?LoginResultRecord;
 
     /**
      * Logs out a user by revoking their current token.
@@ -97,10 +100,10 @@ interface MailAuthenticationInterface
     /**
      * Checks if a user exists with the given email address.
      *
-     * @param  string  $email  The email address to check
+     * @param  string|Transformable  $email  The email address to check
      * @return bool True if a user with the email exists, false otherwise
      */
-    public function userExists(string $email): bool;
+    public function userExists(string|Transformable $email): bool;
 
     /**
      * Get the password validation rules.

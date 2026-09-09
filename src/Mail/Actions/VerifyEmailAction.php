@@ -1,5 +1,7 @@
 <?php
 
+// src/Mail/Actions/VerifyEmailAction.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Actions;
@@ -9,16 +11,16 @@ use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\EmailVerifiedData;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\VerifyEmailRecord;
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use AndyDefer\AuthenticationKit\Mail\Utils\AuthenticationResolver;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Handles email verification using an OTP.
@@ -32,7 +34,7 @@ final class VerifyEmailAction extends AbstractAction
 
     private string $originalEmail = '';
 
-    private ?string $modelClass = null;
+    private ?string $modelType = null;
 
     private bool $success = false;
 
@@ -42,10 +44,36 @@ final class VerifyEmailAction extends AbstractAction
 
     private ?ErrorType $errorType = null;
 
+    private ?MailAuthenticationService $authService = null;
+
+    private ?Model $authenticatable = null;
+
     public function __construct(
-        private readonly MailAuthenticationInterface $authService,
         private readonly LogRepositoryInterface $logRepository,
     ) {}
+
+    /**
+     * Prepares the action by extracting record data.
+     *
+     * @param  AbstractRecord  $record  The verify email request record
+     *
+     * @throws \InvalidArgumentException When the record type is invalid
+     */
+    protected function before(AbstractRecord $record): void
+    {
+        if (! $record instanceof VerifyEmailRecord) {
+            throw new \InvalidArgumentException('Invalid record type');
+        }
+
+        $this->modelType = $record->model_type;
+        $this->email = trim($record->email);
+        $this->originalEmail = $record->email;
+
+        $includeTrashed = AuthenticationResolver::usesSoftDeletes($this->modelType);
+        $result = AuthenticationResolver::resolveByEmail($this->modelType, $this->email, $includeTrashed);
+        $this->authService = $result['service'];
+        $this->authenticatable = $result['authenticatable'];
+    }
 
     /**
      * Processes the verify email request.
@@ -66,61 +94,41 @@ final class VerifyEmailAction extends AbstractAction
             );
         }
 
-        $this->originalEmail = $record->email;
-        $this->email = trim($record->email);
-        $this->modelClass = $record->model_type;
-
         try {
-            $normalizedEmail = strtolower(trim($record->email));
+            // ✅ Vérifier que le service est disponible
+            if ($this->authService === null || $this->modelType === null) {
+                $this->success = false;
+                $this->errorMessage = ErrorCode::INVALID_MODEL->message();
+                $this->errorType = ErrorType::INVALID_MODEL;
 
-            /** @var Model $modelClass */
-            $modelClass = $this->modelClass;
-
-            // ✅ Vérifier si le modèle utilise SoftDeletes
-            $usesSoftDeletes = in_array(SoftDeletes::class, class_uses($modelClass), true);
-
-            $query = $modelClass::query();
-
-            // ✅ Appliquer withTrashed uniquement si le modèle utilise SoftDeletes
-            if ($usesSoftDeletes) {
-                $query = $query->withTrashed();
+                return ResponseFactory::json(
+                    new ErrorResponseData(
+                        message: ErrorCode::INVALID_MODEL->message(),
+                        status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
+                        errorCode: ErrorCode::INVALID_MODEL->value
+                    ),
+                    ErrorCode::INVALID_MODEL->getHttpStatusCode()
+                );
             }
 
-            /** @var MailAuthenticatable&Model|null $authenticatable */
-            $authenticatable = $query->where('email', $normalizedEmail)->first();
-
-            if ($authenticatable === null) {
+            // ✅ Vérifier que l'utilisateur existe
+            if ($this->authenticatable === null) {
                 $this->success = false;
-                $this->errorMessage = 'User not found';
+                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->message();
                 $this->errorType = ErrorType::USER_NOT_FOUND;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: ErrorCode::VERIFY_EMAIL_ERROR->message(),
-                        status: ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode(),
-                        errorCode: ErrorCode::VERIFY_EMAIL_ERROR->value
+                        message: ErrorCode::AUTHENTICATABLE_NOT_FOUND->message(),
+                        status: ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode(),
+                        errorCode: ErrorCode::AUTHENTICATABLE_NOT_FOUND->value
                     ),
-                    ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()
                 );
             }
 
-            // ✅ Vérifier si l'utilisateur est soft-deleted (si le modèle utilise SoftDeletes)
-            if ($usesSoftDeletes && $authenticatable->trashed()) {
-                $this->success = false;
-                $this->errorMessage = 'User not found';
-                $this->errorType = ErrorType::USER_NOT_FOUND;
-
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::VERIFY_EMAIL_ERROR->message(),
-                        status: ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode(),
-                        errorCode: ErrorCode::VERIFY_EMAIL_ERROR->value
-                    ),
-                    ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()
-                );
-            }
-
-            $emailVerifiedAt = $authenticatable->getEmailVerifiedAt();
+            // ✅ Utiliser la méthode de l'interface MailAuthenticatable directement
+            $emailVerifiedAt = $this->authenticatable->getEmailVerifiedAt();
 
             if ($emailVerifiedAt !== null) {
                 $this->success = true;
@@ -138,7 +146,7 @@ final class VerifyEmailAction extends AbstractAction
             }
 
             $verified = $this->authService->verifyEmail(
-                email: $normalizedEmail,
+                email: $this->email,
                 code: $record->token
             );
 
@@ -160,9 +168,10 @@ final class VerifyEmailAction extends AbstractAction
             $this->success = true;
             $this->alreadyVerified = false;
 
-            $authenticatable->refresh();
+            $this->authenticatable->refresh();
 
-            $verifiedAt = $authenticatable->getEmailVerifiedAt();
+            // ✅ Utiliser la méthode de l'interface MailAuthenticatable directement
+            $verifiedAt = $this->authenticatable->getEmailVerifiedAt();
 
             return ResponseFactory::json(
                 new EmailVerifiedData(
@@ -178,13 +187,6 @@ final class VerifyEmailAction extends AbstractAction
             $this->success = false;
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
-
-            $this->logRepository->logVerificationFailure(
-                email: $this->email,
-                modelClass: $this->modelClass,
-                error: $this->errorMessage,
-                errorType: $this->errorType,
-            );
 
             return ResponseFactory::json(
                 new ErrorResponseData(
@@ -213,7 +215,7 @@ final class VerifyEmailAction extends AbstractAction
         if ($this->success) {
             $this->logRepository->logVerificationSuccess(
                 email: $this->email,
-                modelClass: $this->modelClass,
+                modelClass: $this->modelType,
                 alreadyVerified: $this->alreadyVerified,
             );
 
@@ -225,7 +227,7 @@ final class VerifyEmailAction extends AbstractAction
 
         $this->logRepository->logVerificationFailure(
             email: $this->email,
-            modelClass: $this->modelClass,
+            modelClass: $this->modelType,
             error: $errorMessage,
             errorType: $errorType,
         );

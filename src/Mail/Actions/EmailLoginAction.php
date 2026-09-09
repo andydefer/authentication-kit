@@ -10,18 +10,16 @@ use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterfa
 use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
-use AndyDefer\AuthenticationKit\Enums\TokenSource;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\AuthLoginData;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailLoginAuthRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\DataObject;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
-use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
-use AndyDefer\Nemesis\Records\NemesisTokenRecord;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\ValidationException;
@@ -55,7 +53,6 @@ final class EmailLoginAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
         private readonly AgentInterface $agent,
         private readonly AuthenticationKitConfigInterface $config,
-
     ) {}
 
     /**
@@ -133,9 +130,10 @@ final class EmailLoginAction extends AbstractAction
 
             $service = $modelClass::getMailAuthService();
 
-            $tokenRecord = $service->login($email, $password);
+            /** @var LoginResultRecord|null $loginResult */
+            $loginResult = $service->login($email, $password);
 
-            if ($tokenRecord === null) {
+            if ($loginResult === null) {
                 $this->success = false;
                 $this->errorMessage = ErrorCode::INVALID_CREDENTIALS->message();
                 $this->errorType = ErrorType::INVALID_CREDENTIALS;
@@ -170,26 +168,12 @@ final class EmailLoginAction extends AbstractAction
             $this->authId = $auth->getKey();
             $this->success = true;
 
-            [$tokenModel, $plainToken] = $this->nemesis->createWithPlainToken(
-                new NemesisTokenRecord(
-                    name: $this->config->getTokenName(),
-                    source: TokenSource::LOGIN->value,
-                    metadata: new StrictDataObject([
-                        'device_type' => $this->agent->deviceType(),
-                        'platform' => $this->agent->platform(),
-                        'browser' => $this->agent->browser(),
-                        'ip' => $this->ip,
-                        'user_agent' => $this->userAgent,
-                    ]),
-                ),
-                $auth
-            );
-
+            // ✅ Utiliser le token déjà créé par le service
             return ResponseFactory::json(
                 new AuthLoginData(
                     message: 'Login successful',
                     auth: DataObject::from($auth->nemesisFormat()),
-                    token: $plainToken,
+                    token: $loginResult->plain_token,
                 ),
                 200
             );

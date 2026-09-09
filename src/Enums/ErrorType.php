@@ -26,6 +26,11 @@ enum ErrorType: string
     case TOKEN_EXPIRED = 'token_expired';
     case INVALID_RECORD_TYPE = 'invalid_record_type';
     case MISSING_CREDENTIALS = 'missing_credentials';
+    case VERIFICATION_OTP_SEND_FAILED = 'verification_otp_send_failed';
+    case VERIFICATION_EMAIL_RESEND_ERROR = 'verification_email_resend_error';
+    case INVALID_MODEL = 'invalid_model';
+    case MODEL_NOT_FOUND = 'model_not_found';
+    case RESET_PASSWORD_ERROR = 'reset_password_error';
 
     public function message(): string
     {
@@ -45,6 +50,11 @@ enum ErrorType: string
             self::TOKEN_EXPIRED => 'Token has expired',
             self::INVALID_RECORD_TYPE => 'Invalid record type',
             self::MISSING_CREDENTIALS => 'Email and password are required',
+            self::VERIFICATION_OTP_SEND_FAILED => 'Failed to send verification OTP',
+            self::VERIFICATION_EMAIL_RESEND_ERROR => 'Failed to resend verification email',
+            self::INVALID_MODEL => 'Invalid model type',
+            self::MODEL_NOT_FOUND => 'Model class not found',
+            self::RESET_PASSWORD_ERROR => 'Failed to reset password',
         };
     }
 }

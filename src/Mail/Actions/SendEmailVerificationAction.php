@@ -1,17 +1,21 @@
 <?php
 
+// src/Mail/Actions/SendEmailVerificationAction.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\EmailVerificationSentData;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\SendEmailVerificationRecord;
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use AndyDefer\AuthenticationKit\Mail\Utils\AuthenticationResolver;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
@@ -33,10 +37,13 @@ final class SendEmailVerificationAction extends AbstractAction
 
     private ?string $errorMessage = null;
 
-    private ?string $errorClass = null;
+    private ?ErrorType $errorType = null;
+
+    private ?MailAuthenticationService $authService = null;
+
+    private ?Model $authenticatable = null;
 
     public function __construct(
-        private readonly MailAuthenticationInterface $authService,
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
@@ -54,6 +61,14 @@ final class SendEmailVerificationAction extends AbstractAction
         }
 
         $this->modelType = $record->model_type;
+
+        $result = AuthenticationResolver::resolve($this->modelType, $record->auth_id);
+        $this->authService = $result['service'];
+        $this->authenticatable = $result['authenticatable'];
+
+        if ($this->authenticatable !== null) {
+            $this->email = action_normalizer_chain()->normalize($this->authenticatable->email) ?? null;
+        }
     }
 
     /**
@@ -67,45 +82,48 @@ final class SendEmailVerificationAction extends AbstractAction
         if (! $record instanceof SendEmailVerificationRecord) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Invalid record type',
-                    status: 500,
-                    errorCode: 'INVALID_RECORD_TYPE'
+                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
+                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
                 ),
-                500
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
             );
         }
 
         try {
-            $modelClass = $record->model_type;
+            // ✅ Vérifier que le modèle existe
+            if ($this->modelType === null || ! class_exists($this->modelType)) {
+                $this->success = false;
+                $this->errorMessage = ErrorCode::MODEL_NOT_FOUND->message();
+                $this->errorType = ErrorType::MODEL_NOT_FOUND;
 
-            if (! class_exists($modelClass)) {
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: "Model {$modelClass} does not exist",
-                        status: 500,
-                        errorCode: 'MODEL_NOT_FOUND'
+                        message: ErrorCode::MODEL_NOT_FOUND->message(),
+                        status: ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode(),
+                        errorCode: ErrorCode::MODEL_NOT_FOUND->value
                     ),
-                    500
+                    ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode()
                 );
             }
 
-            /** @var Model $authenticatable */
-            $authenticatable = $modelClass::find($record->auth_id);
+            // ✅ Vérifier que l'utilisateur existe
+            if ($this->authenticatable === null || $this->authService === null) {
+                $this->success = false;
+                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->message();
+                $this->errorType = ErrorType::USER_NOT_FOUND;
 
-            if ($authenticatable === null) {
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'Authenticatable not found',
-                        status: 404,
-                        errorCode: 'AUTHENTICATABLE_NOT_FOUND'
+                        message: ErrorCode::AUTHENTICATABLE_NOT_FOUND->message(),
+                        status: ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode(),
+                        errorCode: ErrorCode::AUTHENTICATABLE_NOT_FOUND->value
                     ),
-                    404
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()
                 );
             }
 
-            $this->email = action_normalizer_chain(true)->normalize($authenticatable->email) ?? null;
-
-            $isVerified = $this->authService->isEmailVerified($authenticatable);
+            $isVerified = $this->authService->isEmailVerified($this->authenticatable);
 
             if ($isVerified) {
                 $this->success = true;
@@ -121,19 +139,20 @@ final class SendEmailVerificationAction extends AbstractAction
                 );
             }
 
-            $sent = $this->authService->sendEmailVerificationOtp($authenticatable);
+            $sent = $this->authService->sendEmailVerificationOtp($this->authenticatable);
 
             if (! $sent) {
                 $this->success = false;
                 $this->errorMessage = 'Failed to send verification OTP';
+                $this->errorType = ErrorType::VERIFICATION_OTP_SEND_FAILED;
 
                 return ResponseFactory::json(
                     new ErrorResponseData(
-                        message: 'Failed to send verification OTP',
-                        status: 500,
-                        errorCode: 'VERIFICATION_OTP_SEND_FAILED'
+                        message: ErrorCode::VERIFICATION_OTP_RESEND_FAILED->message(),
+                        status: ErrorCode::VERIFICATION_OTP_RESEND_FAILED->getHttpStatusCode(),
+                        errorCode: ErrorCode::VERIFICATION_OTP_RESEND_FAILED->value
                     ),
-                    500
+                    ErrorCode::VERIFICATION_OTP_RESEND_FAILED->getHttpStatusCode()
                 );
             }
 
@@ -151,15 +170,15 @@ final class SendEmailVerificationAction extends AbstractAction
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
-            $this->errorClass = get_class($e);
+            $this->errorType = ErrorType::VERIFICATION_OTP_SEND_FAILED;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'An error occurred while sending verification OTP',
-                    status: 500,
-                    errorCode: 'VERIFICATION_EMAIL_ERROR'
+                    message: ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->message(),
+                    status: ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->getHttpStatusCode(),
+                    errorCode: ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->value
                 ),
-                500
+                ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->getHttpStatusCode()
             );
         }
     }
@@ -178,7 +197,7 @@ final class SendEmailVerificationAction extends AbstractAction
         }
 
         if ($this->success) {
-            $alreadyVerified = $this->wasAlreadyVerified($record);
+            $alreadyVerified = $this->wasAlreadyVerified();
 
             $this->logRepository->logVerificationSuccess(
                 email: $this->email,
@@ -203,27 +222,14 @@ final class SendEmailVerificationAction extends AbstractAction
     /**
      * Determines if the user was already verified before this request.
      *
-     * @param  AbstractRecord  $record  The request record
      * @return bool True if the user was already verified
      */
-    private function wasAlreadyVerified(AbstractRecord $record): bool
+    private function wasAlreadyVerified(): bool
     {
-        if (! $record instanceof SendEmailVerificationRecord) {
+        if ($this->authenticatable === null || $this->authService === null) {
             return false;
         }
 
-        $modelClass = $record->model_type;
-
-        if (! class_exists($modelClass)) {
-            return false;
-        }
-
-        $authenticatable = $modelClass::find($record->auth_id);
-
-        if ($authenticatable === null) {
-            return false;
-        }
-
-        return $this->authService->isEmailVerified($authenticatable);
+        return $this->authService->isEmailVerified($this->authenticatable);
     }
 }

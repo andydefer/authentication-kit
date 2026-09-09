@@ -1,5 +1,7 @@
 <?php
 
+// src/Mail/Actions/ResetPasswordAction.php
+
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Actions;
@@ -8,15 +10,17 @@ use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\PasswordResetSuccessData;
 use AndyDefer\AuthenticationKit\Mail\Records\ResetPasswordRecord;
+use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
+use AndyDefer\AuthenticationKit\Mail\Utils\AuthenticationResolver;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\DataObject;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -35,10 +39,29 @@ final class ResetPasswordAction extends AbstractAction
 
     private ?ErrorType $errorType = null;
 
+    private ?MailAuthenticationService $authService = null;
+
+    private ?Model $authenticatable = null;
+
+    private ?string $modelType = null;
+
     public function __construct(
-        private readonly MailAuthenticationInterface $authService,
         private readonly LogRepositoryInterface $logRepository,
     ) {}
+
+    protected function before(AbstractRecord $recordRequest): void
+    {
+        if (! $recordRequest instanceof ResetPasswordRecord) {
+            throw new \InvalidArgumentException('Invalid record type');
+        }
+
+        $this->modelType = $recordRequest->model_type;
+        $this->email = $recordRequest->email;
+
+        $result = AuthenticationResolver::resolveByEmail($this->modelType, $this->email);
+        $this->authService = $result['service'];
+        $this->authenticatable = $result['authenticatable'];
+    }
 
     /**
      * Processes the password reset request.
@@ -59,6 +82,22 @@ final class ResetPasswordAction extends AbstractAction
             );
         }
 
+        // ✅ Vérifier que le service est disponible
+        if ($this->authService === null) {
+            $this->success = false;
+            $this->errorMessage = ErrorCode::INVALID_MODEL->message();
+            $this->errorType = ErrorType::INVALID_MODEL;
+
+            return ResponseFactory::json(
+                new ErrorResponseData(
+                    message: ErrorCode::INVALID_MODEL->message(),
+                    status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
+                    errorCode: ErrorCode::INVALID_MODEL->value
+                ),
+                ErrorCode::INVALID_MODEL->getHttpStatusCode()
+            );
+        }
+
         // ✅ Valider le mot de passe avec les règles personnalisables
         $rules = $this->authService::getPasswordValidationRules();
         $validator = Validator::make(
@@ -70,6 +109,10 @@ final class ResetPasswordAction extends AbstractAction
         );
 
         if ($validator->fails()) {
+            $this->success = false;
+            $this->errorMessage = 'Password validation failed';
+            $this->errorType = ErrorType::VALIDATION_ERROR;
+
             return ResponseFactory::json(
                 new ErrorResponseData(
                     message: 'Password validation failed',

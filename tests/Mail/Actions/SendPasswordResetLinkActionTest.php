@@ -10,12 +10,12 @@ use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
 use AndyDefer\LaravelOtp\Services\OtpService;
 use AndyDefer\LaravelOtp\ValueObjects\PurposeVO;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 
 final class SendPasswordResetLinkActionTest extends IntegrationTestCase
 {
-    use DatabaseMigrations;
+    use RefreshDatabase;
 
     private OtpService $otpService;
 
@@ -123,19 +123,21 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
             'email' => $user->email,
         ];
 
-        // ✅ Premier envoi - OK
-        $response1 = $this->postJson('/api/send-password-reset-link', $payload);
-        $response1->assertStatus(200);
+        // ✅ 3 premiers envois - OK
+        for ($i = 0; $i < 3; $i++) {
+            $response = $this->postJson('/api/send-password-reset-link', $payload);
+            $response->assertStatus(200);
+        }
 
-        // ✅ Second envoi - Rate limit atteint (seuil = 1)
-        $response2 = $this->postJson('/api/send-password-reset-link', $payload);
-        $response2->assertStatus(200);
-        $response2->assertJson([
+        // ✅ 4ème envoi - Rate limit atteint (seuil = 3)
+        $response4 = $this->postJson('/api/send-password-reset-link', $payload);
+        $response4->assertStatus(200);
+        $response4->assertJson([
             'message' => 'Password reset OTP sent successfully',
             'email' => $user->email,
         ]);
 
-        // ✅ Vérifier qu'un seul OTP a été créé
+        // ✅ Vérifier que seulement 3 OTPs ont été créés
         $purpose = new PurposeVO(
             value: 'password_reset',
             label: 'Password Reset',
@@ -144,9 +146,8 @@ final class SendPasswordResetLinkActionTest extends IntegrationTestCase
         );
 
         $otps = $this->otpService->getAllFor($user, $purpose);
-        $this->assertCount(1, $otps);
+        $this->assertCount(3, $otps);
     }
-
     // ============================================================================
     // Tests - Erreurs de validation
     // ============================================================================

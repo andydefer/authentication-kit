@@ -14,7 +14,6 @@ use AndyDefer\AuthenticationKit\Mail\Actions\ResetPasswordAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendEmailVerificationAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendPasswordResetLinkAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\VerifyEmailAction;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Http\Middleware\ValidateMailAuthenticatableMiddleware;
 use AndyDefer\AuthenticationKit\Mail\Repositories\LogRepository;
@@ -37,7 +36,6 @@ final class MailServiceProvider extends ServiceProvider
             abstract: EmailRegisterAction::class,
             concrete: function ($app): EmailRegisterAction {
                 return new EmailRegisterAction(
-                    nemesis: $app->make(NemesisInterface::class),
                     logRepository: $app->make(LogRepositoryInterface::class),
                     agent: $app->make(AgentInterface::class),
                     config: $app->make(AuthenticationKitConfigInterface::class),
@@ -74,7 +72,6 @@ final class MailServiceProvider extends ServiceProvider
             abstract: SendPasswordResetLinkAction::class,
             concrete: function ($app): SendPasswordResetLinkAction {
                 return new SendPasswordResetLinkAction(
-                    authService: $app->make(MailAuthenticationInterface::class),
                     logRepository: $app->make(LogRepositoryInterface::class),
                 );
             }
@@ -85,7 +82,6 @@ final class MailServiceProvider extends ServiceProvider
             abstract: ResetPasswordAction::class,
             concrete: function ($app): ResetPasswordAction {
                 return new ResetPasswordAction(
-                    authService: $app->make(MailAuthenticationInterface::class),
                     logRepository: $app->make(LogRepositoryInterface::class),
                 );
             }
@@ -96,7 +92,6 @@ final class MailServiceProvider extends ServiceProvider
             abstract: SendEmailVerificationAction::class,
             concrete: function ($app): SendEmailVerificationAction {
                 return new SendEmailVerificationAction(
-                    authService: $app->make(MailAuthenticationInterface::class),
                     logRepository: $app->make(LogRepositoryInterface::class),
                 );
             }
@@ -107,7 +102,6 @@ final class MailServiceProvider extends ServiceProvider
             abstract: ResendEmailVerificationAction::class,
             concrete: function ($app): ResendEmailVerificationAction {
                 return new ResendEmailVerificationAction(
-                    authService: $app->make(MailAuthenticationInterface::class),
                     logRepository: $app->make(LogRepositoryInterface::class),
                 );
             }
@@ -118,7 +112,6 @@ final class MailServiceProvider extends ServiceProvider
             abstract: VerifyEmailAction::class,
             concrete: function ($app): VerifyEmailAction {
                 return new VerifyEmailAction(
-                    authService: $app->make(MailAuthenticationInterface::class),
                     logRepository: $app->make(LogRepositoryInterface::class),
                 );
             }
