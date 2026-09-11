@@ -11,9 +11,9 @@
     ],
     "require": {
         "php": "^8.1",
-        "andydefer/directive-forge": "^2.17.47",
+        "andydefer/directive-forge": "^2.17.48",
         "jenssegers/agent": "^2.6",
-        "andydefer/laravel-nemesis": "^1.16.12",
+        "andydefer/laravel-nemesis": "^1.16.13",
         "andydefer/laravel-otp": "^1.2.13",
         "andydefer/laravel-notification": "^1.9.1"
     },
