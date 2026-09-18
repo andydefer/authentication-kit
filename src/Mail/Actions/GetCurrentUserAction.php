@@ -6,12 +6,12 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
-use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\Nemesis\Contracts\Configs\NemesisConfigInterface;
+use AndyDefer\Nemesis\Contracts\MustNemesis;
 use AndyDefer\Nemesis\Contracts\Services\CookieTokenStorageInterface;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
-use Exception;
 
 /**
  * Action to get the current authenticated user.
@@ -25,6 +25,7 @@ final class GetCurrentUserAction extends AbstractAction
     public function __construct(
         private readonly CookieTokenStorageInterface $cookieStorage,
         private readonly NemesisInterface $nemesis,
+        private readonly NemesisConfigInterface $config,
     ) {}
 
     /**
@@ -35,112 +36,88 @@ final class GetCurrentUserAction extends AbstractAction
      */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
-        try {
-            $plainToken = null;
+        $plainToken = $this->resolvePlainToken();
 
-            // 1. Essayer de récupérer depuis le Bearer token
-            $bearerToken = request()->bearerToken();
-            if ($bearerToken !== null) {
-                $plainToken = $bearerToken;
-            }
+        if ($plainToken === null) {
+            return $this->unauthenticated();
+        }
 
-            // 2. Si pas de Bearer token, essayer depuis le cookie
-            if ($plainToken === null) {
-                $plainToken = $this->cookieStorage->get(request());
-            }
+        $tokenHash = $this->hashToken($plainToken);
+        $tokenModel = $this->nemesis->findByHash($tokenHash);
 
-            // 3. Si toujours pas de token, retourner 401
-            if ($plainToken === null) {
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: 'Unauthenticated',
-                        status: 401,
-                        errorCode: 'UNAUTHENTICATED'
-                    ),
-                    401
-                );
-            }
+        if ($tokenModel === null) {
+            return $this->unauthenticated();
+        }
 
-            // 4. Hasher le token et le chercher en base
-            $tokenHash = hash('sha256', $plainToken);
-            $tokenModel = $this->nemesis->findByHash($tokenHash);
+        if ($tokenModel->isExpired()) {
+            return $this->unauthenticated();
+        }
 
-            if ($tokenModel === null) {
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: 'Unauthenticated',
-                        status: 401,
-                        errorCode: 'UNAUTHENTICATED'
-                    ),
-                    401
-                );
-            }
+        $tokenableType = $tokenModel->tokenable_type;
+        $tokenableId = $tokenModel->tokenable_id;
 
-            if ($tokenModel->isExpired()) {
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: 'Unauthenticated',
-                        status: 401,
-                        errorCode: 'UNAUTHENTICATED'
-                    ),
-                    401
-                );
-            }
+        if ($tokenableType === null || $tokenableId === null) {
+            return $this->unauthenticated();
+        }
 
-            // 5. Récupérer le tokenable
-            $tokenableType = $tokenModel->tokenable_type;
-            $tokenableId = $tokenModel->tokenable_id;
+        $authenticatable = $tokenableType::find($tokenableId);
 
-            if ($tokenableType === null || $tokenableId === null) {
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: 'Unauthenticated',
-                        status: 401,
-                        errorCode: 'UNAUTHENTICATED'
-                    ),
-                    401
-                );
-            }
+        if ($authenticatable === null) {
+            return $this->unauthenticated();
+        }
 
-            $authenticatable = $tokenableType::find($tokenableId);
+        $this->nemesis->updateLastUsed($tokenModel);
 
-            if ($authenticatable === null) {
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: 'Unauthenticated',
-                        status: 401,
-                        errorCode: 'UNAUTHENTICATED'
-                    ),
-                    401
-                );
-            }
-
-            // 6. Mettre à jour last_used_at
-            $this->nemesis->updateLastUsed($tokenModel);
-
-            // 7. Retourner les données formatées
-            if (! method_exists($authenticatable, 'nemesisFormat')) {
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: 'User data format not available',
-                        status: 422,
-                        errorCode: 'USER_FORMAT_ERROR'
-                    ),
-                    422
-                );
-            }
-
-            return ResponseFactory::json($authenticatable->nemesisFormat(), 200);
-
-        } catch (Exception $e) {
+        if (! $authenticatable instanceof MustNemesis) {
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: ErrorCode::USER_FETCH_ERROR->message(),
-                    status: ErrorCode::USER_FETCH_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::USER_FETCH_ERROR->value
+                    message: 'User data format not available',
+                    status: 422,
+                    errorCode: 'USER_FORMAT_ERROR',
                 ),
-                ErrorCode::USER_FETCH_ERROR->getHttpStatusCode()
+                422
             );
         }
+
+        return ResponseFactory::json($authenticatable->nemesisFormat(), 200);
+    }
+
+    /**
+     * Resolves the plain token from the Bearer header or the cookie.
+     */
+    private function resolvePlainToken(): ?string
+    {
+        $bearerToken = request()->bearerToken();
+
+        if ($bearerToken !== null) {
+            return $bearerToken;
+        }
+
+        return $this->cookieStorage->get(request());
+    }
+
+    /**
+     * Hashes the plain token using the configured hash algorithm.
+     */
+    private function hashToken(string $plainToken): string
+    {
+        $algorithm = $this->config->tokenConfig()->hash_algorithm;
+
+        return hash($algorithm, $plainToken);
+    }
+
+    /**
+     * Returns a standard 401 Unauthenticated response.
+     */
+    private function unauthenticated(): ResponseFactory
+    {
+        return ResponseFactory::json(
+            new ErrorResponseData(
+                message: 'Unauthenticated',
+                status: 401,
+                errorCode: 'UNAUTHENTICATED',
+            ),
+            401
+        );
     }
 }

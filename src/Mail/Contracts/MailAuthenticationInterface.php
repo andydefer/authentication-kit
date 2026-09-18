@@ -15,7 +15,8 @@ use Illuminate\Database\Eloquent\Model;
  * Interface for mail-based authentication services.
  *
  * Defines the core authentication operations for email-based user management,
- * including registration, login, logout, password reset, and email verification.
+ * including registration, login, logout, password reset, email verification,
+ * email update, and two-factor authentication.
  */
 interface MailAuthenticationInterface
 {
@@ -24,91 +25,85 @@ interface MailAuthenticationInterface
      *
      * @param  AbstractRecord  $record  The registration record containing user data
      * @return array{user: Model&Authenticatable, token: NemesisToken|null, plain_token: string|null}
-     *                                                                                                The newly created authenticatable model, token model and plain token
      */
     public function register(AbstractRecord $record): array;
 
     /**
      * Authenticates a user with email and password.
-     *
-     * @param  string  $email  The user's email address
-     * @param  string  $password  The user's password
-     * @return LoginResultRecord|null The authentication token record on success, null on failure
      */
     public function login(string $email, string $password): ?LoginResultRecord;
 
     /**
      * Logs out a user by revoking their current token.
-     *
-     * @param  Authenticatable&Model  $authenticatable  The authenticatable entity
-     * @param  string  $plainToken  The plain text token to revoke
-     * @return bool True on successful logout, false otherwise
      */
     public function logout(Authenticatable&Model $authenticatable, string $plainToken): bool;
 
     /**
      * Sends a password reset OTP to the user's email address.
-     *
-     * @param  string  $email  The user's email address
-     * @return bool True if the OTP was sent successfully, false otherwise
      */
     public function sendPasswordResetOtp(string $email): bool;
 
     /**
      * Resets the user's password using a valid OTP code.
-     *
-     * @param  string  $email  The user's email address
-     * @param  string  $code  The OTP verification code
-     * @param  string  $password  The new password
-     * @return bool True if the password was reset successfully, false otherwise
      */
     public function resetPassword(string $email, string $code, string $password): bool;
 
     /**
      * Sends an email verification OTP to the user.
-     *
-     * @param  Authenticatable&Model  $authenticatable  The authenticatable entity
-     * @return bool True if the OTP was sent successfully, false otherwise
      */
     public function sendEmailVerificationOtp(Authenticatable&Model $authenticatable): bool;
 
     /**
      * Verifies the user's email using an OTP code.
-     *
-     * @param  string  $email  The user's email address
-     * @param  string  $code  The OTP verification code
-     * @return bool True if the email was verified successfully, false otherwise
      */
     public function verifyEmail(string $email, string $code): bool;
 
     /**
      * Resends the email verification OTP to the user.
-     *
-     * @param  Authenticatable&Model  $authenticatable  The authenticatable entity
-     * @return bool True if the OTP was resent successfully, false otherwise
      */
     public function resendEmailVerificationOtp(Authenticatable&Model $authenticatable): bool;
 
     /**
      * Checks if the user's email is verified.
-     *
-     * @param  Authenticatable&Model  $authenticatable  The authenticatable entity
-     * @return bool True if the email is verified, false otherwise
      */
     public function isEmailVerified(Authenticatable&Model $authenticatable): bool;
 
     /**
      * Checks if a user exists with the given email address.
-     *
-     * @param  string|Transformable  $email  The email address to check
-     * @return bool True if a user with the email exists, false otherwise
      */
     public function userExists(string|Transformable $email): bool;
 
     /**
-     * Get the password validation rules.
+     * Sends an OTP to the user's new email address to confirm an email update.
+     */
+    public function sendEmailUpdateOtp(Authenticatable&Model $authenticatable, string $newEmail): bool;
+
+    /**
+     * Confirms the email update with the OTP code.
+     */
+    public function updateEmail(Authenticatable&Model $authenticatable, string $newEmail, string $code): bool;
+
+    /**
+     * Sends a two-factor authentication OTP for a sensitive action.
      *
-     * Override this method to customize password validation.
+     * @param  Authenticatable&Model  $authenticatable  The authenticatable entity
+     * @param  string  $purpose  The sensitive action purpose (e.g. "change_email")
+     * @return bool True if the OTP was sent successfully
+     */
+    public function sendTwoFactorOtp(Authenticatable&Model $authenticatable, string $purpose): bool;
+
+    /**
+     * Verifies a two-factor authentication OTP for a sensitive action.
+     *
+     * @param  Authenticatable&Model  $authenticatable  The authenticatable entity
+     * @param  string  $purpose  The sensitive action purpose
+     * @param  string  $code  The OTP code to verify
+     * @return bool True if the OTP is valid
+     */
+    public function verifyTwoFactorOtp(Authenticatable&Model $authenticatable, string $purpose, string $code): bool;
+
+    /**
+     * Get the password validation rules.
      *
      * @return array<string, array<int, mixed>>
      */

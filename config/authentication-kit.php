@@ -1,16 +1,14 @@
 <?php
 
-// config/authentication-kit.php
-
 declare(strict_types=1);
 
 return [
     /*
     |--------------------------------------------------------------------------
-    | Token Name
+    | Authentication Token Name
     |--------------------------------------------------------------------------
     |
-    | The name used for the authentication token.
+    | The name used to identify generated authentication tokens.
     |
     */
     'token_name' => env('AUTH_KIT_TOKEN_NAME', 'authentication-kit'),
@@ -20,8 +18,8 @@ return [
     | Password Reset Rate Limit
     |--------------------------------------------------------------------------
     |
-    | Number of password reset OTP attempts allowed per period.
-    | Default: 3 attempts.
+    | Maximum number of password reset OTPs a user can request within
+    | the OTP validity window.
     |
     */
     'password_reset_rate_limit' => env('AUTH_KIT_PASSWORD_RESET_RATE_LIMIT', 3),
@@ -31,20 +29,41 @@ return [
     | Email Verification Rate Limit
     |--------------------------------------------------------------------------
     |
-    | Number of email verification OTP attempts allowed per period.
-    | Default: 5 attempts.
+    | Maximum number of email verification OTPs a user can request within
+    | the OTP validity window.
     |
     */
     'email_verification_rate_limit' => env('AUTH_KIT_EMAIL_VERIFICATION_RATE_LIMIT', 5),
 
     /*
     |--------------------------------------------------------------------------
-    | Store Token in Cookie
+    | Email Update Rate Limit
     |--------------------------------------------------------------------------
     |
-    | Whether to automatically store the authentication token in a cookie
-    | after login. Useful for web applications with cookie-based sessions.
-    | Default: false (tokens are returned but not stored in cookies).
+    | Maximum number of email update OTPs a user can request within
+    | the OTP validity window.
+    |
+    */
+    'email_update_rate_limit' => env('AUTH_KIT_EMAIL_UPDATE_RATE_LIMIT', 3),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Two-Factor Rate Limit
+    |--------------------------------------------------------------------------
+    |
+    | Maximum number of two-factor authentication OTPs a user can request
+    | within the OTP validity window.
+    |
+    */
+    'two_factor_rate_limit' => env('AUTH_KIT_TWO_FACTOR_RATE_LIMIT', 3),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Store Token In Cookie
+    |--------------------------------------------------------------------------
+    |
+    | Whether authentication tokens should be stored in a secure cookie
+    | after login or registration.
     |
     */
     'store_token_in_cookie' => env('AUTH_KIT_STORE_TOKEN_IN_COOKIE', true),

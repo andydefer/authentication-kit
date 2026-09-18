@@ -83,6 +83,36 @@ enum EventType: string
     case EMAIL_VERIFICATION_FAILED = 'email_verification_failed';
 
     /**
+     * User email address successfully updated.
+     */
+    case USER_EMAIL_UPDATE_SUCCESS = 'user_email_update_success';
+
+    /**
+     * User email address update attempt failed.
+     */
+    case USER_EMAIL_UPDATE_FAILED = 'user_email_update_failed';
+
+    /**
+     * Two-factor authentication OTP successfully sent.
+     */
+    case USER_TWO_FACTOR_SENT = 'user_two_factor_sent';
+
+    /**
+     * Two-factor authentication OTP sending failed.
+     */
+    case USER_TWO_FACTOR_SEND_FAILED = 'user_two_factor_send_failed';
+
+    /**
+     * Two-factor authentication OTP successfully verified.
+     */
+    case USER_TWO_FACTOR_VERIFIED = 'user_two_factor_verified';
+
+    /**
+     * Two-factor authentication OTP verification failed.
+     */
+    case USER_TWO_FACTOR_VERIFY_FAILED = 'user_two_factor_verify_failed';
+
+    /**
      * Returns a human-readable label for the event.
      *
      * These labels are intended for logging, UI display, or API responses
@@ -109,6 +139,12 @@ enum EventType: string
             self::EMAIL_VERIFICATION_SUCCESS => 'Email verification successful',
             self::EMAIL_VERIFICATION_ALREADY_VERIFIED => 'Email already verified',
             self::EMAIL_VERIFICATION_FAILED => 'Email verification failed',
+            self::USER_EMAIL_UPDATE_SUCCESS => 'User email update successful',
+            self::USER_EMAIL_UPDATE_FAILED => 'User email update failed',
+            self::USER_TWO_FACTOR_SENT => 'Two-factor OTP sent',
+            self::USER_TWO_FACTOR_SEND_FAILED => 'Two-factor OTP send failed',
+            self::USER_TWO_FACTOR_VERIFIED => 'Two-factor verification successful',
+            self::USER_TWO_FACTOR_VERIFY_FAILED => 'Two-factor verification failed',
         };
     }
 }

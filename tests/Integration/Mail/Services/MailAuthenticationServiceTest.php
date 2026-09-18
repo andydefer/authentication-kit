@@ -32,7 +32,11 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     private const TEST_PASSWORD = 'Password123!';
 
+    private const TEST_NEW_EMAIL = 'new-email@example.com';
+
     private const TEST_OTP = '123456';
+
+    private const TEST_TWO_FACTOR_PURPOSE = 'change_email';
 
     protected function setUp(): void
     {
@@ -57,9 +61,25 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
     {
         $purposeVO = new PurposeVO(
             value: $purpose,
-            label: $purpose === 'email_verification' ? 'Email Verification' : 'Password Reset',
+            label: match ($purpose) {
+                'email_verification' => 'Email Verification',
+                'email_update' => 'Email Update',
+                default => 'Password Reset',
+            },
             ttl: $purpose === 'email_verification' ? 300 : 600,
             maxAttempts: 3
+        );
+
+        return $this->otpService->create($user, $purposeVO);
+    }
+
+    private function createTwoFactorOtp(TestUserMail $user, string $context = self::TEST_TWO_FACTOR_PURPOSE): Otp
+    {
+        $purposeVO = new PurposeVO(
+            value: 'two_factor_'.$context,
+            label: 'Two-Factor Authentication',
+            ttl: 300,
+            maxAttempts: 3,
         );
 
         return $this->otpService->create($user, $purposeVO);
@@ -82,7 +102,6 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_register_creates_user_successfully(): void
     {
-        // Arrange
         $record = new EmailRegisterAuthRecord(
             model_type: TestUserMail::class,
             data: new StrictDataObject([
@@ -94,10 +113,8 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
             with_token: false
         );
 
-        // Act
         $result = $this->service->register($record);
 
-        // Assert
         $this->assertIsArray($result);
         $this->assertArrayHasKey('user', $result);
         $this->assertArrayHasKey('token', $result);
@@ -116,7 +133,6 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_register_creates_user_with_token(): void
     {
-        // Arrange
         $record = new EmailRegisterAuthRecord(
             model_type: TestUserMail::class,
             data: new StrictDataObject([
@@ -128,10 +144,8 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
             with_token: true
         );
 
-        // Act
         $result = $this->service->register($record);
 
-        // Assert
         $this->assertIsArray($result);
         $this->assertArrayHasKey('user', $result);
         $this->assertArrayHasKey('token', $result);
@@ -143,7 +157,6 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
             'email' => self::TEST_EMAIL,
         ]);
 
-        // Vérifier que le token existe
         $token = NemesisToken::where('tokenable_type', TestUserMail::class)
             ->where('tokenable_id', $user->id)
             ->first();
@@ -157,7 +170,6 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_register_throws_validation_exception_for_invalid_data(): void
     {
-        // Arrange
         $record = new EmailRegisterAuthRecord(
             model_type: TestUserMail::class,
             data: new StrictDataObject([
@@ -170,23 +182,18 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
         $this->expectException(ValidationException::class);
 
-        // Act
         $this->service->register($record);
     }
 
     public function test_login_returns_token_for_valid_credentials(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Act
         $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
 
-        // Assert
         $this->assertNotNull($result);
         $this->assertInstanceOf(LoginResultRecord::class, $result);
 
-        // Vérifier que le token est en base
         $token = NemesisToken::where('tokenable_type', TestUserMail::class)
             ->where('tokenable_id', $user->id)
             ->first();
@@ -198,117 +205,89 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_login_returns_null_for_invalid_password(): void
     {
-        // Arrange
         $this->createTestUser();
 
-        // Act
         $result = $this->service->login(self::TEST_EMAIL, 'wrong-password');
 
-        // Assert
         $this->assertNull($result);
 
-        // Vérifier qu'aucun token n'a été créé
         $tokenCount = NemesisToken::where('tokenable_type', TestUserMail::class)->count();
         $this->assertEquals(0, $tokenCount);
     }
 
     public function test_login_returns_null_for_non_existent_user(): void
     {
-        // Act
         $result = $this->service->login('nonexistent@example.com', self::TEST_PASSWORD);
 
-        // Assert
         $this->assertNull($result);
     }
 
     public function test_logout_revokes_token_successfully(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Créer un token de connexion
         $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
         $this->assertNotNull($result);
 
-        // Récupérer le token en base
         $token = NemesisToken::where('tokenable_type', TestUserMail::class)
             ->where('tokenable_id', $user->id)
             ->first();
 
         $this->assertNotNull($token);
 
-        // Act
         $logoutResult = $this->service->logout($user, $result->plain_token ?? 'auth-login');
 
-        // Assert
         $this->assertTrue($logoutResult);
 
-        // Vérifier que le token est révoqué (soft deleted)
         $token->refresh();
         $this->assertNotNull($token->deleted_at);
     }
 
     public function test_logout_returns_false_for_invalid_token(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Act
         $result = $this->service->logout($user, 'invalid-token');
 
-        // Assert
         $this->assertFalse($result);
     }
 
     public function test_send_password_reset_otp_sends_otp_for_existing_user(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Act
         $result = $this->service->sendPasswordResetOtp(self::TEST_EMAIL);
 
-        // Assert
         $this->assertTrue($result);
 
-        // Vérifier que l'OTP est en base
         $otp = Otp::where('identifier_type', TestUserMail::class)
             ->where('identifier_id', $user->id)
             ->first();
 
         $this->assertNotNull($otp);
-
-        // ✅ getValue() retourne StrictDataObject, on accède à ->value
         $this->assertEquals('password_reset', $otp->getPurpose()->getValue()->value);
         $this->assertEquals(0, $otp->attempts);
     }
 
     public function test_send_password_reset_otp_returns_false_for_non_existent_user(): void
     {
-        // Act
         $result = $this->service->sendPasswordResetOtp('nonexistent@example.com');
 
-        // Assert
         $this->assertFalse($result);
     }
 
     public function test_send_password_reset_otp_respects_rate_limit(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Envoyer 3 OTPs (limite = 3)
         $this->service->sendPasswordResetOtp(self::TEST_EMAIL);
         $this->service->sendPasswordResetOtp(self::TEST_EMAIL);
         $this->service->sendPasswordResetOtp(self::TEST_EMAIL);
 
-        // Act - 4ème tentative (devrait être bloquée)
         $result = $this->service->sendPasswordResetOtp(self::TEST_EMAIL);
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que seulement 3 OTPs existent
         $otpCount = Otp::where('identifier_type', TestUserMail::class)
             ->where('identifier_id', $user->id)
             ->count();
@@ -318,99 +297,74 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_reset_password_with_valid_otp(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Créer un OTP
         $otp = $this->createOtp($user, 'password_reset');
 
-        // Act
         $result = $this->service->resetPassword(self::TEST_EMAIL, $otp->code, 'NewPassword123!');
 
-        // Assert
         $this->assertTrue($result);
 
-        // Vérifier que le mot de passe a été mis à jour
         $user->refresh();
         $this->assertTrue(Hash::check('NewPassword123!', $user->password));
 
-        // Vérifier que l'OTP a été utilisé (attempts > 0)
         $freshOtp = $otp->refresh();
         $this->assertGreaterThan(0, $freshOtp->attempts);
     }
 
     public function test_reset_password_with_invalid_otp(): void
     {
-        // Arrange
         $this->createTestUser();
 
-        // Act
         $result = $this->service->resetPassword(self::TEST_EMAIL, '000000', 'NewPassword123!');
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que le mot de passe n'a pas changé
         $user = TestUserMail::where('email', self::TEST_EMAIL)->first();
         $this->assertTrue(Hash::check(self::TEST_PASSWORD, $user->password));
     }
 
     public function test_reset_password_with_expired_otp(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Créer un OTP expiré
         $otp = $this->createOtp($user, 'password_reset');
         $otp->expires_at = now()->subMinutes(10);
         $otp->save();
 
-        // Act
         $result = $this->service->resetPassword(self::TEST_EMAIL, $otp->code, 'NewPassword123!');
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que le mot de passe n'a pas changé
         $user->refresh();
         $this->assertTrue(Hash::check(self::TEST_PASSWORD, $user->password));
     }
 
     public function test_reset_password_with_exceeded_attempts(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Créer un OTP
         $otp = $this->createOtp($user, 'password_reset');
 
-        // Simuler 3 tentatives échouées
         $otp->attempts = 3;
         $otp->save();
 
-        // Act
         $result = $this->service->resetPassword(self::TEST_EMAIL, $otp->code, 'NewPassword123!');
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que le mot de passe n'a pas changé
         $user->refresh();
         $this->assertTrue(Hash::check(self::TEST_PASSWORD, $user->password));
     }
 
     public function test_send_email_verification_otp_sends_otp(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Act
         $result = $this->service->sendEmailVerificationOtp($user);
 
-        // Assert
         $this->assertTrue($result);
 
-        // Vérifier que l'OTP est en base
         $otp = Otp::where('identifier_type', TestUserMail::class)
             ->where('identifier_id', $user->id)
             ->first();
@@ -422,16 +376,12 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_send_email_verification_otp_returns_true_when_already_verified(): void
     {
-        // Arrange
         $user = $this->createTestUser(['email_verified_at' => now()]);
 
-        // Act
         $result = $this->service->sendEmailVerificationOtp($user);
 
-        // Assert
         $this->assertTrue($result);
 
-        // Vérifier qu'aucun OTP n'a été créé
         $otpCount = Otp::where('identifier_type', TestUserMail::class)
             ->where('identifier_id', $user->id)
             ->count();
@@ -441,23 +391,18 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_send_email_verification_otp_respects_rate_limit(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Envoyer 3 OTPs (limite = 3)
         $this->service->sendEmailVerificationOtp($user);
         $this->service->sendEmailVerificationOtp($user);
         $this->service->sendEmailVerificationOtp($user);
         $this->service->sendEmailVerificationOtp($user);
         $this->service->sendEmailVerificationOtp($user);
 
-        // Act - 6ème tentative (devrait être bloquée)
         $result = $this->service->sendEmailVerificationOtp($user);
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que seulement 3 OTPs existent
         $otpCount = Otp::where('identifier_type', TestUserMail::class)
             ->where('identifier_id', $user->id)
             ->count();
@@ -467,115 +412,86 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_verify_email_with_valid_otp(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Créer un OTP
         $otp = $this->createOtp($user, 'email_verification');
 
-        // Act
         $result = $this->service->verifyEmail(self::TEST_EMAIL, $otp->code);
 
-        // Assert
         $this->assertTrue($result);
 
-        // Vérifier que l'email est vérifié
         $user->refresh();
         $this->assertNotNull($user->email_verified_at);
 
-        // Vérifier que l'OTP a été utilisé
         $otp->refresh();
         $this->assertGreaterThan(0, $otp->attempts);
     }
 
     public function test_verify_email_with_invalid_otp(): void
     {
-        // Arrange
         $this->createTestUser();
 
-        // Act
         $result = $this->service->verifyEmail(self::TEST_EMAIL, '000000');
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que l'email n'est pas vérifié
         $user = TestUserMail::where('email', self::TEST_EMAIL)->first();
         $this->assertNull($user->email_verified_at);
     }
 
     public function test_verify_email_with_expired_otp(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Créer un OTP expiré
         $otp = $this->createOtp($user, 'email_verification');
         $otp->expires_at = now()->subMinutes(10);
         $otp->save();
 
-        // Act
         $result = $this->service->verifyEmail(self::TEST_EMAIL, $otp->code);
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que l'email n'est pas vérifié
         $user->refresh();
         $this->assertNull($user->email_verified_at);
     }
 
     public function test_verify_email_with_exceeded_attempts(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Créer un OTP
         $otp = $this->createOtp($user, 'email_verification');
 
-        // Simuler 3 tentatives échouées
         $otp->attempts = 3;
         $otp->save();
 
-        // Act
         $result = $this->service->verifyEmail(self::TEST_EMAIL, $otp->code);
 
-        // Assert
         $this->assertFalse($result);
 
-        // Vérifier que l'email n'est pas vérifié
         $user->refresh();
         $this->assertNull($user->email_verified_at);
     }
 
     public function test_verify_email_returns_true_when_already_verified(): void
     {
-        // Arrange
         $user = $this->createTestUser(['email_verified_at' => now()]);
 
-        // Act
         $result = $this->service->verifyEmail(self::TEST_EMAIL, 'any-otp');
 
-        // Assert
         $this->assertTrue($result);
 
-        // Vérifier que la date de vérification est inchangée
         $user->refresh();
         $this->assertNotNull($user->email_verified_at);
     }
 
     public function test_resend_email_verification_otp(): void
     {
-        // Arrange
         $user = $this->createTestUser();
 
-        // Act
         $result = $this->service->resendEmailVerificationOtp($user);
 
-        // Assert
         $this->assertTrue($result);
 
-        // Vérifier qu'un nouvel OTP a été créé
         $otpCount = Otp::where('identifier_type', TestUserMail::class)
             ->where('identifier_id', $user->id)
             ->count();
@@ -585,29 +501,343 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_is_email_verified(): void
     {
-        // Arrange - utilisateur non vérifié
         $user = $this->createTestUser();
 
-        // Act & Assert
         $this->assertFalse($this->service->isEmailVerified($user));
 
-        // Arrange - utilisateur vérifié
         $user->email_verified_at = now();
         $user->save();
 
-        // Act & Assert
         $this->assertTrue($this->service->isEmailVerified($user));
     }
 
     public function test_user_exists(): void
     {
-        // Arrange
         $this->createTestUser();
 
-        // Act & Assert
         $this->assertTrue($this->service->userExists(self::TEST_EMAIL));
         $this->assertFalse($this->service->userExists('nonexistent@example.com'));
     }
+
+    // ========================================================================
+    // EMAIL UPDATE — TESTS
+    // ========================================================================
+
+    public function test_send_email_update_otp_creates_otp_for_new_email(): void
+    {
+        $user = $this->createTestUser();
+
+        $result = $this->service->sendEmailUpdateOtp($user, self::TEST_NEW_EMAIL);
+
+        $this->assertTrue($result);
+
+        $otp = Otp::where('identifier_type', TestUserMail::class)
+            ->where('identifier_id', $user->id)
+            ->first();
+
+        $this->assertNotNull($otp);
+        $this->assertEquals('email_update', $otp->getPurpose()->getValue()->value);
+        $this->assertEquals(0, $otp->attempts);
+    }
+
+    public function test_send_email_update_otp_returns_false_when_email_already_taken(): void
+    {
+        $this->createTestUser();
+        $otherUser = $this->createTestUser(['email' => self::TEST_NEW_EMAIL]);
+
+        $result = $this->service->sendEmailUpdateOtp($otherUser, self::TEST_EMAIL);
+
+        $this->assertFalse($result);
+
+        $otpCount = Otp::where('identifier_type', TestUserMail::class)
+            ->where('identifier_id', $otherUser->id)
+            ->count();
+
+        $this->assertEquals(0, $otpCount);
+    }
+
+    public function test_send_email_update_otp_respects_rate_limit(): void
+    {
+        $user = $this->createTestUser();
+
+        $this->service->sendEmailUpdateOtp($user, 'new1@example.com');
+        $this->service->sendEmailUpdateOtp($user, 'new2@example.com');
+        $this->service->sendEmailUpdateOtp($user, 'new3@example.com');
+
+        $result = $this->service->sendEmailUpdateOtp($user, 'new4@example.com');
+
+        $this->assertFalse($result);
+
+        $otpCount = Otp::where('identifier_type', TestUserMail::class)
+            ->where('identifier_id', $user->id)
+            ->count();
+
+        $this->assertEquals(3, $otpCount);
+    }
+
+    public function test_update_email_with_valid_otp(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createOtp($user, 'email_update');
+
+        $result = $this->service->updateEmail($user, self::TEST_NEW_EMAIL, $otp->code);
+
+        $this->assertTrue($result);
+
+        $user->refresh();
+        $this->assertEquals(self::TEST_NEW_EMAIL, $user->email);
+        $this->assertNull($user->email_verified_at);
+    }
+
+    public function test_update_email_with_invalid_otp(): void
+    {
+        $user = $this->createTestUser();
+
+        $result = $this->service->updateEmail($user, self::TEST_NEW_EMAIL, '000000');
+
+        $this->assertFalse($result);
+
+        $user->refresh();
+        $this->assertEquals(self::TEST_EMAIL, $user->email);
+    }
+
+    public function test_update_email_with_expired_otp(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createOtp($user, 'email_update');
+        $otp->expires_at = now()->subMinutes(10);
+        $otp->save();
+
+        $result = $this->service->updateEmail($user, self::TEST_NEW_EMAIL, $otp->code);
+
+        $this->assertFalse($result);
+
+        $user->refresh();
+        $this->assertEquals(self::TEST_EMAIL, $user->email);
+    }
+
+    public function test_update_email_with_exceeded_attempts(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createOtp($user, 'email_update');
+        $otp->attempts = 3;
+        $otp->save();
+
+        $result = $this->service->updateEmail($user, self::TEST_NEW_EMAIL, $otp->code);
+
+        $this->assertFalse($result);
+
+        $user->refresh();
+        $this->assertEquals(self::TEST_EMAIL, $user->email);
+    }
+
+    public function test_update_email_resets_email_verified_at(): void
+    {
+        $user = $this->createTestUser(['email_verified_at' => now()]);
+
+        $otp = $this->createOtp($user, 'email_update');
+
+        $result = $this->service->updateEmail($user, self::TEST_NEW_EMAIL, $otp->code);
+
+        $this->assertTrue($result);
+
+        $user->refresh();
+        $this->assertNull($user->email_verified_at);
+        $this->assertFalse($this->service->isEmailVerified($user));
+    }
+
+    public function test_update_email_normalizes_email_to_lowercase(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createOtp($user, 'email_update');
+
+        $result = $this->service->updateEmail($user, 'NEW-EMAIL@Example.COM', $otp->code);
+
+        $this->assertTrue($result);
+
+        $user->refresh();
+        $this->assertEquals('new-email@example.com', $user->email);
+    }
+
+    // ========================================================================
+    // TWO-FACTOR AUTHENTICATION — TESTS
+    // ========================================================================
+
+    public function test_send_two_factor_otp_creates_otp_for_purpose(): void
+    {
+        $user = $this->createTestUser();
+
+        $result = $this->service->sendTwoFactorOtp($user, self::TEST_TWO_FACTOR_PURPOSE);
+
+        $this->assertTrue($result);
+
+        $purpose = new PurposeVO(
+            value: 'two_factor_'.self::TEST_TWO_FACTOR_PURPOSE,
+            label: 'Two-Factor Authentication',
+            ttl: 300,
+            maxAttempts: 3,
+        );
+
+        $otps = $this->otpService->getAllFor($user, $purpose);
+        $this->assertCount(1, $otps);
+        $this->assertEquals(0, $otps->first()->attempts);
+    }
+
+    public function test_send_two_factor_otp_isolates_purposes(): void
+    {
+        $user = $this->createTestUser();
+
+        $this->service->sendTwoFactorOtp($user, 'change_email');
+        $this->service->sendTwoFactorOtp($user, 'change_password');
+
+        $emailPurpose = new PurposeVO(
+            value: 'two_factor_change_email',
+            label: 'Two-Factor Authentication',
+            ttl: 300,
+            maxAttempts: 3,
+        );
+
+        $passwordPurpose = new PurposeVO(
+            value: 'two_factor_change_password',
+            label: 'Two-Factor Authentication',
+            ttl: 300,
+            maxAttempts: 3,
+        );
+
+        $this->assertCount(1, $this->otpService->getAllFor($user, $emailPurpose));
+        $this->assertCount(1, $this->otpService->getAllFor($user, $passwordPurpose));
+    }
+
+    public function test_send_two_factor_otp_respects_rate_limit(): void
+    {
+        $user = $this->createTestUser();
+
+        $this->service->sendTwoFactorOtp($user, self::TEST_TWO_FACTOR_PURPOSE);
+        $this->service->sendTwoFactorOtp($user, self::TEST_TWO_FACTOR_PURPOSE);
+        $this->service->sendTwoFactorOtp($user, self::TEST_TWO_FACTOR_PURPOSE);
+
+        $result = $this->service->sendTwoFactorOtp($user, self::TEST_TWO_FACTOR_PURPOSE);
+
+        $this->assertFalse($result);
+
+        $purpose = new PurposeVO(
+            value: 'two_factor_'.self::TEST_TWO_FACTOR_PURPOSE,
+            label: 'Two-Factor Authentication',
+            ttl: 300,
+            maxAttempts: 3,
+        );
+
+        $otps = $this->otpService->getAllFor($user, $purpose);
+        $this->assertCount(3, $otps);
+    }
+
+    public function test_verify_two_factor_otp_with_valid_code(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createTwoFactorOtp($user);
+
+        $result = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            $otp->code,
+        );
+
+        $this->assertTrue($result);
+    }
+
+    public function test_verify_two_factor_otp_with_invalid_code(): void
+    {
+        $this->createTestUser();
+
+        $user = TestUserMail::where('email', self::TEST_EMAIL)->first();
+
+        $result = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            '000000',
+        );
+
+        $this->assertFalse($result);
+    }
+
+    public function test_verify_two_factor_otp_with_wrong_purpose(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createTwoFactorOtp($user, 'change_email');
+
+        $result = $this->service->verifyTwoFactorOtp(
+            $user,
+            'change_password',
+            $otp->code,
+        );
+
+        $this->assertFalse($result);
+    }
+
+    public function test_verify_two_factor_otp_with_expired_code(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createTwoFactorOtp($user);
+        $otp->expires_at = now()->subMinutes(10);
+        $otp->save();
+
+        $result = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            $otp->code,
+        );
+
+        $this->assertFalse($result);
+    }
+
+    public function test_verify_two_factor_otp_with_exceeded_attempts(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createTwoFactorOtp($user);
+        $otp->attempts = 3;
+        $otp->save();
+
+        $result = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            $otp->code,
+        );
+
+        $this->assertFalse($result);
+    }
+
+    public function test_verify_two_factor_otp_uses_code_once(): void
+    {
+        $user = $this->createTestUser();
+
+        $otp = $this->createTwoFactorOtp($user);
+
+        $first = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            $otp->code,
+        );
+        $this->assertTrue($first);
+
+        $second = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            $otp->code,
+        );
+        $this->assertFalse($second);
+    }
+
+    // ========================================================================
+    // COMPLETE FLOWS
+    // ========================================================================
 
     public function test_complete_authentication_flow(): void
     {
@@ -669,5 +899,94 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
         $plainToken = $newToken->plain_token ?? 'plain-token';
         $logoutResult = $this->service->logout($user, $plainToken);
         $this->assertTrue($logoutResult);
+    }
+
+    public function test_complete_email_update_flow(): void
+    {
+        // 1. Register + login
+        $user = $this->createTestUser(['email_verified_at' => now()]);
+
+        // 2. Send email update OTP
+        $sent = $this->service->sendEmailUpdateOtp($user, self::TEST_NEW_EMAIL);
+        $this->assertTrue($sent);
+
+        // 3. Get OTP
+        $otp = Otp::where('identifier_type', TestUserMail::class)
+            ->where('identifier_id', $user->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($otp);
+
+        // 4. Confirm update
+        $updated = $this->service->updateEmail($user, self::TEST_NEW_EMAIL, $otp->code);
+        $this->assertTrue($updated);
+
+        // 5. Check email changed and verification reset
+        $user->refresh();
+        $this->assertEquals(self::TEST_NEW_EMAIL, $user->email);
+        $this->assertNull($user->email_verified_at);
+
+        // 6. Old email no longer exists
+        $this->assertFalse($this->service->userExists(self::TEST_EMAIL));
+
+        // 7. New email is registered
+        $this->assertTrue($this->service->userExists(self::TEST_NEW_EMAIL));
+
+        // 8. Re-verify the new email
+        $verifySent = $this->service->sendEmailVerificationOtp($user);
+        $this->assertTrue($verifySent);
+
+        $verificationOtp = Otp::where('identifier_type', TestUserMail::class)
+            ->where('identifier_id', $user->id)
+            ->where('purpose', 'like', '%email_verification%')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($verificationOtp);
+
+        $verified = $this->service->verifyEmail(self::TEST_NEW_EMAIL, $verificationOtp->code);
+        $this->assertTrue($verified);
+
+        $user->refresh();
+        $this->assertTrue($this->service->isEmailVerified($user));
+    }
+
+    public function test_complete_two_factor_flow(): void
+    {
+        $user = $this->createTestUser(['email_verified_at' => now()]);
+
+        // 1. Send 2FA OTP
+        $sent = $this->service->sendTwoFactorOtp($user, self::TEST_TWO_FACTOR_PURPOSE);
+        $this->assertTrue($sent);
+
+        // 2. Get OTP
+        $purpose = new PurposeVO(
+            value: 'two_factor_'.self::TEST_TWO_FACTOR_PURPOSE,
+            label: 'Two-Factor Authentication',
+            ttl: 300,
+            maxAttempts: 3,
+        );
+
+        $otps = $this->otpService->getAllFor($user, $purpose);
+        $otp = $otps->first();
+
+        $this->assertNotNull($otp);
+
+        // 3. Verify 2FA OTP
+        $verified = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            $otp->code,
+        );
+        $this->assertTrue($verified);
+
+        // 4. Second attempt should fail (OTP is consumed)
+        $second = $this->service->verifyTwoFactorOtp(
+            $user,
+            self::TEST_TWO_FACTOR_PURPOSE,
+            $otp->code,
+        );
+        $this->assertFalse($second);
     }
 }

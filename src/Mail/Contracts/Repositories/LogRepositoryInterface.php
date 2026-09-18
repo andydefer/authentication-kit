@@ -1,7 +1,5 @@
 <?php
 
-// src/Mail/Contracts/Repositories/LogRepositoryInterface.php
-
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Contracts\Repositories;
@@ -12,7 +10,8 @@ use AndyDefer\AuthenticationKit\Enums\ErrorType;
  * Interface for authentication log repository.
  *
  * Provides methods for logging authentication events including
- * registration, login, logout, and their success/failure states.
+ * registration, login, logout, email updates, and two-factor
+ * authentication flows.
  */
 interface LogRepositoryInterface
 {
@@ -161,5 +160,63 @@ interface LogRepositoryInterface
         string $modelClass,
         string $error,
         ErrorType $errorType,
+    ): void;
+
+    /**
+     * Log a successful email update event.
+     *
+     * @param  int  $authId  The ID of the authenticated user/entity
+     * @param  string  $modelClass  The class name of the authenticatable model
+     * @param  string  $newEmail  The new email address
+     */
+    public function logEmailUpdateSuccess(
+        int $authId,
+        string $modelClass,
+        string $newEmail,
+    ): void;
+
+    /**
+     * Log a failed email update event.
+     *
+     * @param  int  $authId  The ID of the authenticated user/entity
+     * @param  string  $modelClass  The class name of the authenticatable model
+     * @param  string  $error  The error message
+     * @param  ErrorType  $errorType  The type of error that occurred
+     */
+    public function logEmailUpdateFailure(
+        int $authId,
+        string $modelClass,
+        string $error,
+        ErrorType $errorType,
+    ): void;
+
+    /**
+     * Log a two-factor OTP sent event.
+     *
+     * @param  int  $authId  The ID of the authenticated user/entity
+     * @param  string  $modelClass  The class name of the authenticatable model
+     * @param  string  $purpose  The sensitive action purpose that required 2FA
+     * @param  bool  $success  Whether the OTP was sent successfully
+     */
+    public function logTwoFactorSent(
+        int $authId,
+        string $modelClass,
+        string $purpose,
+        bool $success,
+    ): void;
+
+    /**
+     * Log a two-factor OTP verified event.
+     *
+     * @param  int  $authId  The ID of the authenticated user/entity
+     * @param  string  $modelClass  The class name of the authenticatable model
+     * @param  string  $purpose  The sensitive action purpose that required 2FA
+     * @param  bool  $success  Whether the OTP was verified successfully
+     */
+    public function logTwoFactorVerified(
+        int $authId,
+        string $modelClass,
+        string $purpose,
+        bool $success,
     ): void;
 }

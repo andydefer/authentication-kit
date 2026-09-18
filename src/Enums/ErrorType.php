@@ -1,7 +1,5 @@
 <?php
 
-// src/Enums/ErrorType.php
-
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Enums;
@@ -20,6 +18,7 @@ enum ErrorType: string
     case VALIDATION_ERROR = 'validation_error';
     case ACCOUNT_LOCKED = 'account_locked';
     case EMAIL_ALREADY_VERIFIED = 'email_already_verified';
+    case EMAIL_ALREADY_TAKEN = 'email_already_taken';
     case INVALID_EMAIL = 'invalid_email';
     case PASSWORD_TOO_WEAK = 'password_too_weak';
     case INVALID_TOKEN = 'invalid_token';
@@ -31,6 +30,8 @@ enum ErrorType: string
     case INVALID_MODEL = 'invalid_model';
     case MODEL_NOT_FOUND = 'model_not_found';
     case RESET_PASSWORD_ERROR = 'reset_password_error';
+    case INVALID_TWO_FACTOR_PURPOSE = 'invalid_two_factor_purpose';
+    case TWO_FACTOR_NOT_ENABLED = 'two_factor_not_enabled';
 
     public function message(): string
     {
@@ -44,6 +45,7 @@ enum ErrorType: string
             self::VALIDATION_ERROR => 'Validation error',
             self::ACCOUNT_LOCKED => 'Account is locked',
             self::EMAIL_ALREADY_VERIFIED => 'Email already verified',
+            self::EMAIL_ALREADY_TAKEN => 'Email address is already in use',
             self::INVALID_EMAIL => 'Invalid email format',
             self::PASSWORD_TOO_WEAK => 'Password is too weak',
             self::INVALID_TOKEN => 'Invalid token',
@@ -55,6 +57,8 @@ enum ErrorType: string
             self::INVALID_MODEL => 'Invalid model type',
             self::MODEL_NOT_FOUND => 'Model class not found',
             self::RESET_PASSWORD_ERROR => 'Failed to reset password',
+            self::INVALID_TWO_FACTOR_PURPOSE => 'Invalid two-factor purpose',
+            self::TWO_FACTOR_NOT_ENABLED => 'Two-factor authentication is not enabled',
         };
     }
 }

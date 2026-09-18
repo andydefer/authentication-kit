@@ -1,7 +1,5 @@
 <?php
 
-// src/Contracts/Configs/AuthenticationKitConfigInterface.php
-
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Contracts\Configs;
@@ -10,7 +8,7 @@ namespace AndyDefer\AuthenticationKit\Contracts\Configs;
  * Interface for authentication kit configuration.
  *
  * Provides methods to retrieve authentication configuration values
- * such as token names and other settings.
+ * such as rate limits and cookie storage behavior.
  */
 interface AuthenticationKitConfigInterface
 {
@@ -34,6 +32,20 @@ interface AuthenticationKitConfigInterface
      * @return int The number of attempts allowed per period
      */
     public function getEmailVerificationRateLimitAttempts(): int;
+
+    /**
+     * Get the rate limit attempts for email update OTP.
+     *
+     * @return int The number of attempts allowed per period
+     */
+    public function getEmailUpdateRateLimitAttempts(): int;
+
+    /**
+     * Get the rate limit attempts for two-factor authentication OTP.
+     *
+     * @return int The number of attempts allowed per period
+     */
+    public function getTwoFactorRateLimitAttempts(): int;
 
     /**
      * Check if authentication token should be stored in a cookie.

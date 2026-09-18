@@ -1,7 +1,5 @@
 <?php
 
-// src/Mail/Repositories/LogRepository.php
-
 declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Mail\Repositories;
@@ -18,7 +16,7 @@ use Jenssegers\Agent\Agent;
 /**
  * Repository for authentication event logging.
  *
- * Handles logging of registration, login, and logout events with contextual
+ * Handles logging of all authentication events with contextual
  * information about the request (IP, user agent, device, etc.).
  */
 final class LogRepository implements LogRepositoryInterface
@@ -271,6 +269,104 @@ final class LogRepository implements LogRepositoryInterface
                 'model_type' => $modelClass,
                 'error' => $error,
                 'error_type' => $errorType->value,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logEmailUpdateSuccess(
+        int $authId,
+        string $modelClass,
+        string $newEmail,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => EventType::USER_EMAIL_UPDATE_SUCCESS->value,
+                'auth_id' => $authId,
+                'model_type' => $modelClass,
+                'new_email' => $newEmail,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logEmailUpdateFailure(
+        int $authId,
+        string $modelClass,
+        string $error,
+        ErrorType $errorType,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => EventType::USER_EMAIL_UPDATE_FAILED->value,
+                'auth_id' => $authId,
+                'model_type' => $modelClass,
+                'error' => $error,
+                'error_type' => $errorType->value,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logTwoFactorSent(
+        int $authId,
+        string $modelClass,
+        string $purpose,
+        bool $success,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => $success
+                    ? EventType::USER_TWO_FACTOR_SENT->value
+                    : EventType::USER_TWO_FACTOR_SEND_FAILED->value,
+                'auth_id' => $authId,
+                'model_type' => $modelClass,
+                'two_factor_purpose' => $purpose,
+                'success' => $success,
+            ]);
+
+        $this->logger->info(new LogDataRecord(
+            type: 'auth',
+            payload: $payload
+        ));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function logTwoFactorVerified(
+        int $authId,
+        string $modelClass,
+        string $purpose,
+        bool $success,
+    ): void {
+        $payload = $this->buildBasePayload()
+            ->merge([
+                'event' => $success
+                    ? EventType::USER_TWO_FACTOR_VERIFIED->value
+                    : EventType::USER_TWO_FACTOR_VERIFY_FAILED->value,
+                'auth_id' => $authId,
+                'model_type' => $modelClass,
+                'two_factor_purpose' => $purpose,
+                'success' => $success,
             ]);
 
         $this->logger->info(new LogDataRecord(

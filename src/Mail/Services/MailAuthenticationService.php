@@ -45,6 +45,10 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
     private const PASSWORD_RESET_PURPOSE = 'password_reset';
 
+    private const EMAIL_UPDATE_PURPOSE = 'email_update';
+
+    private const TWO_FACTOR_PURPOSE_PREFIX = 'two_factor_';
+
     /**
      * @param  class-string<T>  $modelClass
      */
@@ -122,7 +126,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $token = null;
         $plainToken = null;
 
-        // ✅ Créer le token si with_token est true
         if ($record->with_token) {
             $tokenRecord = NemesisTokenRecord::from([
                 'name' => 'auth-register',
@@ -135,7 +138,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
             [$token, $plainToken] = $this->nemesis->createWithPlainToken($tokenRecord, $user);
 
-            // ✅ Stocker le cookie si configuré
             if ($this->config->shouldStoreTokenInCookie()) {
                 $this->cookieStorage->store($plainToken);
             }
@@ -224,7 +226,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
      */
     public function logout(Authenticatable&Model $authenticatable, string $plainToken): bool
     {
-
         $this->beforeLogout($authenticatable, $plainToken);
 
         $token = $this->nemesis->getTokenByPlainText($plainToken, $authenticatable);
@@ -293,11 +294,9 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $purpose = $this->getPasswordResetPurpose();
         $rateLimitAttempts = $this->config->getPasswordResetRateLimitAttempts();
 
-        // ✅ Fenêtre = durée de validité de l'OTP (10 minutes)
         $otpTtl = $purpose->getTtl() ?? 600;
         $window = now()->subSeconds($otpTtl);
 
-        // ✅ Vérifier le rate limit
         if ($this->otpService->isRateLimited($user, $purpose, $rateLimitAttempts, $window)) {
             $this->logRepository->logPasswordResetLinkSent(
                 email: $email,
@@ -396,7 +395,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $purpose = $this->getEmailVerificationPurpose();
         $rateLimitAttempts = $this->config->getEmailVerificationRateLimitAttempts();
 
-        // ✅ Fenêtre = durée de validité de l'OTP (5 minutes)
         $otpTtl = $purpose->getTtl() ?? 300;
         $window = now()->subSeconds($otpTtl);
 
@@ -516,129 +514,289 @@ class MailAuthenticationService implements MailAuthenticationInterface
         return $modelClass::where('email', strtolower($email))->exists();
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    public function sendEmailUpdateOtp(Authenticatable&Model $authenticatable, string $newEmail): bool
+    {
+        $this->beforeSendEmailUpdateOtp($authenticatable, $newEmail);
+
+        $normalizedEmail = strtolower($newEmail);
+
+        if ($this->userExists($normalizedEmail)) {
+            $this->logRepository->logEmailUpdateFailure(
+                authId: $authenticatable->getKey(),
+                modelClass: $this->modelClass,
+                error: 'Email already taken',
+                errorType: ErrorType::EMAIL_ALREADY_TAKEN,
+            );
+
+            return false;
+        }
+
+        $purpose = $this->getEmailUpdatePurpose();
+        $rateLimitAttempts = $this->config->getEmailUpdateRateLimitAttempts();
+
+        $otpTtl = $purpose->getTtl() ?? 600;
+        $window = now()->subSeconds($otpTtl);
+
+        if ($this->otpService->isRateLimited($authenticatable, $purpose, $rateLimitAttempts, $window)) {
+            $this->logRepository->logEmailUpdateFailure(
+                authId: $authenticatable->getKey(),
+                modelClass: $this->modelClass,
+                error: 'Rate limit exceeded',
+                errorType: ErrorType::RATE_LIMIT_EXCEEDED,
+            );
+
+            return false;
+        }
+
+        $otp = $this->otpService->create(
+            identifier: $authenticatable,
+            purpose: $purpose,
+        );
+
+        $result = $this->sendNotification(
+            $this->buildEmailUpdateNotification($this->normalize($normalizedEmail), $this->normalize($otp->code))
+        );
+
+        $this->logRepository->logEmailUpdateSuccess(
+            authId: $authenticatable->getKey(),
+            modelClass: $this->modelClass,
+            newEmail: $normalizedEmail,
+        );
+
+        $this->afterSendEmailUpdateOtp($authenticatable, $normalizedEmail);
+
+        return $result->allSuccess();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function updateEmail(Authenticatable&Model $authenticatable, string $newEmail, string $code): bool
+    {
+        $this->beforeUpdateEmail($authenticatable, $newEmail, $code);
+
+        $normalizedEmail = strtolower($newEmail);
+
+        $purpose = $this->getEmailUpdatePurpose();
+
+        $valid = $this->otpService->verify(
+            identifier: $authenticatable,
+            code: $code,
+            purpose: $purpose,
+        );
+
+        if (! $valid) {
+            $this->logRepository->logEmailUpdateFailure(
+                authId: $authenticatable->getKey(),
+                modelClass: $this->modelClass,
+                error: 'Invalid or expired OTP',
+                errorType: ErrorType::INVALID_OTP,
+            );
+
+            return false;
+        }
+
+        $authenticatable->email = $normalizedEmail;
+        $authenticatable->email_verified_at = null;
+        $authenticatable->save();
+
+        $this->logRepository->logEmailUpdateSuccess(
+            authId: $authenticatable->getKey(),
+            modelClass: $this->modelClass,
+            newEmail: $normalizedEmail,
+        );
+
+        $this->afterUpdateEmail($authenticatable, $normalizedEmail);
+
+        return true;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function sendTwoFactorOtp(Authenticatable&Model $authenticatable, string $purpose): bool
+    {
+        $this->beforeSendTwoFactorOtp($authenticatable, $purpose);
+
+        $otpPurpose = $this->getTwoFactorPurpose($purpose);
+        $rateLimitAttempts = $this->config->getTwoFactorRateLimitAttempts();
+
+        $otpTtl = $otpPurpose->getTtl() ?? 300;
+        $window = now()->subSeconds($otpTtl);
+
+        if ($this->otpService->isRateLimited($authenticatable, $otpPurpose, $rateLimitAttempts, $window)) {
+            $this->logRepository->logTwoFactorSent(
+                authId: $authenticatable->getKey(),
+                modelClass: $this->modelClass,
+                purpose: $purpose,
+                success: false,
+            );
+
+            return false;
+        }
+
+        $otp = $this->otpService->create(
+            identifier: $authenticatable,
+            purpose: $otpPurpose,
+        );
+
+        $result = $this->sendNotification(
+            $this->buildTwoFactorNotification(
+                $this->normalize($authenticatable->email),
+                $this->normalize($otp->code),
+                $purpose,
+            )
+        );
+
+        $this->logRepository->logTwoFactorSent(
+            authId: $authenticatable->getKey(),
+            modelClass: $this->modelClass,
+            purpose: $purpose,
+            success: $result->allSuccess(),
+        );
+
+        $this->afterSendTwoFactorOtp($authenticatable, $purpose);
+
+        return $result->allSuccess();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function verifyTwoFactorOtp(Authenticatable&Model $authenticatable, string $purpose, string $code): bool
+    {
+        $this->beforeVerifyTwoFactorOtp($authenticatable, $purpose, $code);
+
+        $otpPurpose = $this->getTwoFactorPurpose($purpose);
+
+        $valid = $this->otpService->verify(
+            identifier: $authenticatable,
+            code: $code,
+            purpose: $otpPurpose,
+        );
+
+        $this->logRepository->logTwoFactorVerified(
+            authId: $authenticatable->getKey(),
+            modelClass: $this->modelClass,
+            purpose: $purpose,
+            success: $valid,
+        );
+
+        if (! $valid) {
+            return false;
+        }
+
+        $this->afterVerifyTwoFactorOtp($authenticatable, $purpose);
+
+        return true;
+    }
+
     // ========================================================================
     // MÉTHODES PROTECTED - HOOKS EXTENSIBLES
     // ========================================================================
 
     /**
      * Hook called before registration.
-     *
-     * Use case: IP check, anti-spam, custom validation.
      */
-    protected function beforeRegister(AbstractRecord $record): void
-    {
-        // Can be overridden by user
-    }
+    protected function beforeRegister(AbstractRecord $record): void {}
 
     /**
      * Hook called after successful registration.
-     *
-     * Use case: send welcome email, create profile, assign roles.
      */
-    protected function afterRegister(Model&Authenticatable $user, AbstractRecord $record): void
-    {
-        // Can be overridden by user
-    }
+    protected function afterRegister(Model&Authenticatable $user, AbstractRecord $record): void {}
 
     /**
      * Hook called before login.
-     *
-     * Use case: check if account is locked, 2FA, IP whitelist.
      */
-    protected function beforeLogin(string|Transformable $email, string|Transformable $password): void
-    {
-        // Can be overridden by user
-    }
+    protected function beforeLogin(string|Transformable $email, string|Transformable $password): void {}
 
     /**
      * Hook called after successful login.
-     *
-     * Use case: update last_login, log activity, create session.
      */
-    protected function afterLogin(Model&Authenticatable $user): void
-    {
-        // Can be overridden by user
-    }
+    protected function afterLogin(Model&Authenticatable $user): void {}
 
     /**
      * Hook called before logout.
-     *
-     * Use case: log activity, validate token.
      */
-    protected function beforeLogout(Authenticatable&Model $authenticatable, string|Transformable $plainToken): void
-    {
-        // Can be overridden by user
-    }
+    protected function beforeLogout(Authenticatable&Model $authenticatable, string|Transformable $plainToken): void {}
 
     /**
      * Hook called after successful logout.
-     *
-     * Use case: clear sessions, invalidate cache.
      */
-    protected function afterLogout(Authenticatable&Model $authenticatable): void
-    {
-        // Can be overridden by user
-    }
+    protected function afterLogout(Authenticatable&Model $authenticatable): void {}
 
     /**
      * Hook called before sending password reset OTP.
-     *
-     * Use case: check if email is allowed to reset password.
      */
-    protected function beforeSendPasswordResetOtp(string|Transformable $email): void
-    {
-        // Can be overridden by user
-    }
+    protected function beforeSendPasswordResetOtp(string|Transformable $email): void {}
 
     /**
      * Hook called after sending password reset OTP.
-     *
-     * Use case: notify admin on failure.
      */
-    protected function afterSendPasswordResetOtp(string|Transformable $email, bool $success): void
-    {
-        // Can be overridden by user
-    }
+    protected function afterSendPasswordResetOtp(string|Transformable $email, bool $success): void {}
 
     /**
      * Hook called before resetting password.
-     *
-     * Use case: additional password validation.
      */
-    protected function beforeResetPassword(string|Transformable $email, string|Transformable $code, string|Transformable $password): void
-    {
-        // Can be overridden by user
-    }
+    protected function beforeResetPassword(string|Transformable $email, string|Transformable $code, string|Transformable $password): void {}
 
     /**
      * Hook called after successful password reset.
-     *
-     * Use case: invalidate all sessions, notify user.
      */
-    protected function afterResetPassword(Model&Authenticatable $user): void
-    {
-        // Can be overridden by user
-    }
+    protected function afterResetPassword(Model&Authenticatable $user): void {}
 
     /**
      * Hook called before email verification.
-     *
-     * Use case: additional checks before verification.
      */
-    protected function beforeVerifyEmail(string|Transformable $email, string|Transformable $code): void
-    {
-        // Can be overridden by user
-    }
+    protected function beforeVerifyEmail(string|Transformable $email, string|Transformable $code): void {}
 
     /**
      * Hook called after successful email verification.
-     *
-     * Use case: activate account, send welcome notification.
      */
-    protected function afterVerifyEmail(Model&Authenticatable $user): void
-    {
-        // Can be overridden by user
-    }
+    protected function afterVerifyEmail(Model&Authenticatable $user): void {}
+
+    /**
+     * Hook called before sending an email update OTP.
+     */
+    protected function beforeSendEmailUpdateOtp(Authenticatable&Model $authenticatable, string|Transformable $newEmail): void {}
+
+    /**
+     * Hook called after sending an email update OTP.
+     */
+    protected function afterSendEmailUpdateOtp(Authenticatable&Model $authenticatable, string|Transformable $newEmail): void {}
+
+    /**
+     * Hook called before confirming an email update.
+     */
+    protected function beforeUpdateEmail(Authenticatable&Model $authenticatable, string|Transformable $newEmail, string|Transformable $code): void {}
+
+    /**
+     * Hook called after confirming an email update.
+     */
+    protected function afterUpdateEmail(Authenticatable&Model $authenticatable, string|Transformable $newEmail): void {}
+
+    /**
+     * Hook called before sending a two-factor OTP.
+     */
+    protected function beforeSendTwoFactorOtp(Authenticatable&Model $authenticatable, string|Transformable $purpose): void {}
+
+    /**
+     * Hook called after sending a two-factor OTP.
+     */
+    protected function afterSendTwoFactorOtp(Authenticatable&Model $authenticatable, string|Transformable $purpose): void {}
+
+    /**
+     * Hook called before verifying a two-factor OTP.
+     */
+    protected function beforeVerifyTwoFactorOtp(Authenticatable&Model $authenticatable, string|Transformable $purpose, string|Transformable $code): void {}
+
+    /**
+     * Hook called after verifying a two-factor OTP.
+     */
+    protected function afterVerifyTwoFactorOtp(Authenticatable&Model $authenticatable, string|Transformable $purpose): void {}
 
     // ========================================================================
     // MÉTHODES DE NOTIFICATION - EXTENSIBLES
@@ -646,12 +804,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
     /**
      * Build the password reset notification message.
-     *
-     * Override this method to customize the password reset email.
-     *
-     * @param  string  $email  The recipient email address
-     * @param  string  $otp  The OTP code
-     * @return NotificationMessageRecord The notification message record
      */
     protected function buildPasswordResetNotification(string|Transformable $email, string|Transformable $otp): NotificationMessageRecord
     {
@@ -666,12 +818,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
     /**
      * Build the email verification notification message.
-     *
-     * Override this method to customize the email verification email.
-     *
-     * @param  string  $email  The recipient email address
-     * @param  string  $otp  The OTP code
-     * @return NotificationMessageRecord The notification message record
      */
     protected function buildEmailVerificationNotification(string|Transformable $email, string|Transformable $otp): NotificationMessageRecord
     {
@@ -685,11 +831,36 @@ class MailAuthenticationService implements MailAuthenticationInterface
     }
 
     /**
+     * Build the email update notification message.
+     */
+    protected function buildEmailUpdateNotification(string|Transformable $email, string|Transformable $otp): NotificationMessageRecord
+    {
+        $normalizedOtp = $this->normalize($otp);
+
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => 'Confirm Your New Email Address',
+            'body' => "Use this code to confirm your new email: {$normalizedOtp}",
+        ]);
+    }
+
+    /**
+     * Build the two-factor authentication notification message.
+     */
+    protected function buildTwoFactorNotification(string|Transformable $email, string|Transformable $otp, string|Transformable $purpose): NotificationMessageRecord
+    {
+        $normalizedOtp = $this->normalize($otp);
+        $normalizedPurpose = $this->normalize($purpose);
+
+        return NotificationMessageRecord::from([
+            'email' => $email,
+            'subject' => 'Your Two-Factor Authentication Code',
+            'body' => "Your two-factor code for {$normalizedPurpose} is: {$normalizedOtp}",
+        ]);
+    }
+
+    /**
      * Get the password validation rules.
-     *
-     * Override this method to customize password validation.
-     *
-     * @return array<string, array<int, mixed>>
      */
     public static function getPasswordValidationRules(): array
     {
@@ -704,8 +875,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
     /**
      * Send a notification email.
-     *
-     * @param  NotificationMessageRecord  $record  The notification message record
      */
     private function sendNotification(NotificationMessageRecord $record): SendResultCollection
     {
@@ -726,8 +895,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
 
     /**
      * Get the validation rules for authentication fields only.
-     *
-     * @return array<string, array<int, mixed>>
      */
     private function getDefaultValidationRules(): array
     {
@@ -763,6 +930,36 @@ class MailAuthenticationService implements MailAuthenticationInterface
             value: self::PASSWORD_RESET_PURPOSE,
             label: 'Password Reset',
             ttl: 600,
+            maxAttempts: 3
+        );
+    }
+
+    /**
+     * Get the purpose for email update.
+     */
+    private function getEmailUpdatePurpose(): PurposeVO
+    {
+        return new PurposeVO(
+            value: self::EMAIL_UPDATE_PURPOSE,
+            label: 'Email Update',
+            ttl: 600,
+            maxAttempts: 3
+        );
+    }
+
+    /**
+     * Get the purpose for a two-factor OTP.
+     *
+     * The purpose value is namespaced with a prefix so that two-factor
+     * OTPs for different sensitive actions (change_email, change_password,
+     * delete_account, ...) remain isolated from one another.
+     */
+    private function getTwoFactorPurpose(string $context): PurposeVO
+    {
+        return new PurposeVO(
+            value: self::TWO_FACTOR_PURPOSE_PREFIX.$context,
+            label: 'Two-Factor Authentication',
+            ttl: 300,
             maxAttempts: 3
         );
     }
