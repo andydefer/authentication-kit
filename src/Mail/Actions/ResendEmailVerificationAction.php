@@ -12,12 +12,10 @@ use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\EmailVerificationResentData;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\ResendEmailVerificationRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Mail\Utils\AuthenticationResolver;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
-use AndyDefer\DomainStructures\Utils\DataObject;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
@@ -25,9 +23,6 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Handles resending email verification OTP to a user.
- *
- * This action checks if the user is already verified, and if not,
- * resends a new verification OTP via email.
  */
 final class ResendEmailVerificationAction extends AbstractAction
 {
@@ -49,13 +44,6 @@ final class ResendEmailVerificationAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
-    /**
-     * Prepares the action by extracting record data.
-     *
-     * @param  AbstractRecord  $record  The resend verification request record
-     *
-     * @throws \InvalidArgumentException When the record type is invalid
-     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof ResendEmailVerificationRecord) {
@@ -73,39 +61,24 @@ final class ResendEmailVerificationAction extends AbstractAction
         }
     }
 
-    /**
-     * Processes the resend verification request.
-     *
-     * @param  AbstractRecord  $record  The resend verification request record
-     * @return ResponseFactory The HTTP response
-     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof ResendEmailVerificationRecord) {
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
-                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
-                ),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
+                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
             );
         }
 
         try {
-            // ✅ Vérifier si l'utilisateur existe
             if ($this->authenticatable === null || $this->authService === null) {
                 $this->success = false;
-                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->message();
+                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->getMessage();
                 $this->errorType = ErrorType::USER_NOT_FOUND;
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::AUTHENTICATABLE_NOT_FOUND->message(),
-                        status: ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode(),
-                        errorCode: ErrorCode::AUTHENTICATABLE_NOT_FOUND->value
-                    ),
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->toResponseData(),
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()->value,
                 );
             }
 
@@ -119,7 +92,7 @@ final class ResendEmailVerificationAction extends AbstractAction
                         sentAt: now()->toIso8601String(),
                         alreadyVerified: true,
                     ),
-                    200
+                    200,
                 );
             }
 
@@ -131,12 +104,8 @@ final class ResendEmailVerificationAction extends AbstractAction
                 $this->errorType = ErrorType::VERIFICATION_OTP_SEND_FAILED;
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::VERIFICATION_OTP_RESEND_FAILED->message(),
-                        status: ErrorCode::VERIFICATION_OTP_RESEND_FAILED->getHttpStatusCode(),
-                        errorCode: ErrorCode::VERIFICATION_OTP_RESEND_FAILED->value
-                    ),
-                    ErrorCode::VERIFICATION_OTP_RESEND_FAILED->getHttpStatusCode()
+                    ErrorCode::VERIFICATION_OTP_RESEND_FAILED->toResponseData(),
+                    ErrorCode::VERIFICATION_OTP_RESEND_FAILED->getHttpStatusCode()->value,
                 );
             }
 
@@ -148,7 +117,7 @@ final class ResendEmailVerificationAction extends AbstractAction
                     email: $this->email ?? 'unknown',
                     sentAt: now()->toIso8601String(),
                 ),
-                200
+                200,
             );
 
         } catch (ValidationException $e) {
@@ -157,13 +126,8 @@ final class ResendEmailVerificationAction extends AbstractAction
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::VALIDATION_ERROR->message(),
-                    status: ErrorCode::VALIDATION_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::VALIDATION_ERROR->value,
-                    errors: DataObject::from($e->errors()),
-                ),
-                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()
+                ErrorCode::VALIDATION_ERROR->toResponseData(errors: $e->errors()),
+                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()->value,
             );
         } catch (Exception $e) {
             $this->success = false;
@@ -171,23 +135,12 @@ final class ResendEmailVerificationAction extends AbstractAction
             $this->errorType = ErrorType::VERIFICATION_OTP_SEND_FAILED;
 
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->message(),
-                    status: ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->value
-                ),
-                ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->getHttpStatusCode()
+                ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->toResponseData(),
+                ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->getHttpStatusCode()->value,
             );
         }
     }
 
-    /**
-     * Logs the resend verification attempt result.
-     *
-     * @param  bool  $success  Whether the operation succeeded
-     * @param  Exception|null  $error  The exception if one occurred
-     * @param  AbstractRecord  $record  The original request record
-     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->email === null) {
@@ -215,11 +168,6 @@ final class ResendEmailVerificationAction extends AbstractAction
         );
     }
 
-    /**
-     * Determines if the user was already verified before this request.
-     *
-     * @return bool True if the user was already verified
-     */
     private function wasAlreadyVerified(): bool
     {
         if ($this->authenticatable === null || $this->authService === null) {

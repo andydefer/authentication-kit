@@ -11,7 +11,6 @@ use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\PasswordResetLinkSentData;
 use AndyDefer\AuthenticationKit\Mail\Records\SendPasswordResetLinkRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
@@ -22,10 +21,6 @@ use Exception;
 
 /**
  * Handles sending a password reset link (OTP) to a user.
- *
- * This action sends a password reset OTP to the user's email address.
- * For security reasons, it returns a generic error message regardless of
- * whether the user exists or the OTP failed to send.
  */
 final class SendPasswordResetLinkAction extends AbstractAction
 {
@@ -47,13 +42,6 @@ final class SendPasswordResetLinkAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
-    /**
-     * Prepares the action by extracting record data.
-     *
-     * @param  AbstractRecord  $record  The send password reset link request record
-     *
-     * @throws \InvalidArgumentException When the record type is invalid
-     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof SendPasswordResetLinkRecord) {
@@ -66,12 +54,6 @@ final class SendPasswordResetLinkAction extends AbstractAction
         $this->authService = AuthenticationResolver::resolveService($this->modelType);
     }
 
-    /**
-     * Processes the send password reset link request.
-     *
-     * @param  AbstractRecord  $record  The send password reset link request record
-     * @return ResponseFactory The HTTP response
-     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof SendPasswordResetLinkRecord) {
@@ -80,7 +62,7 @@ final class SendPasswordResetLinkAction extends AbstractAction
 
         if ($this->authService === null) {
             $this->success = false;
-            $this->errorMessage = ErrorCode::INVALID_MODEL->message();
+            $this->errorMessage = ErrorCode::INVALID_MODEL->getMessage();
             $this->errorType = ErrorType::INVALID_MODEL;
 
             return $this->error(ErrorCode::INVALID_MODEL);
@@ -106,7 +88,7 @@ final class SendPasswordResetLinkAction extends AbstractAction
                     email: $record->email,
                     sentAt: now()->toIso8601String(),
                 ),
-                200
+                200,
             );
         } catch (Exception $e) {
             $this->success = false;
@@ -117,15 +99,6 @@ final class SendPasswordResetLinkAction extends AbstractAction
         }
     }
 
-    /**
-     * Logs the send password reset link attempt result.
-     *
-     * For security reasons, logs are only created if the user exists.
-     *
-     * @param  bool  $success  Whether the operation succeeded
-     * @param  Exception|null  $error  The exception if one occurred
-     * @param  AbstractRecord  $record  The original request record
-     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->email === null || ! $this->userFound) {
@@ -149,12 +122,8 @@ final class SendPasswordResetLinkAction extends AbstractAction
     private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
-            new ErrorResponseData(
-                message: $overrideMessage ?? $code->message(),
-                status: $code->getHttpStatusCode(),
-                errorCode: $code->value,
-            ),
-            $code->getHttpStatusCode()
+            $code->toResponseData(message: $overrideMessage),
+            $code->getHttpStatusCode()->value,
         );
     }
 }

@@ -7,7 +7,6 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\SendTwoFactorOtpAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
@@ -19,10 +18,6 @@ use Throwable;
 
 /**
  * Action to send a two-factor authentication OTP.
- *
- * The authenticated user requests a code to confirm a sensitive action
- * (e.g. change email, delete account, change password). The OTP is sent
- * by email via MailAuthenticationService::sendTwoFactorOtp().
  */
 final class SendTwoFactorOtpAction extends AbstractAction
 {
@@ -65,7 +60,7 @@ final class SendTwoFactorOtpAction extends AbstractAction
                     message: 'Two-factor code sent',
                     status: 200,
                 ),
-                200
+                200,
             );
         } catch (Throwable $e) {
             return $this->error(ErrorCode::TWO_FACTOR_SEND_ERROR, $e->getMessage());
@@ -78,12 +73,8 @@ final class SendTwoFactorOtpAction extends AbstractAction
     private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
-            new ErrorResponseData(
-                message: $overrideMessage ?? $code->message(),
-                status: $code->getHttpStatusCode(),
-                errorCode: $code->value,
-            ),
-            $code->getHttpStatusCode()
+            $code->toResponseData(message: $overrideMessage),
+            $code->getHttpStatusCode()->value,
         );
     }
 }

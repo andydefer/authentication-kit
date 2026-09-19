@@ -7,7 +7,6 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\UpdateEmailAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
@@ -19,11 +18,6 @@ use Throwable;
 
 /**
  * Action to confirm an email address update.
- *
- * The authenticated user submits the OTP received on their new email
- * address. This action validates that the submitted model_type matches
- * the authenticated entity, then delegates to
- * MailAuthenticationService::updateEmail().
  */
 final class UpdateEmailAction extends AbstractAction
 {
@@ -67,7 +61,7 @@ final class UpdateEmailAction extends AbstractAction
                     message: 'Email updated successfully. Please verify your new email.',
                     status: 200,
                 ),
-                200
+                200,
             );
         } catch (Throwable $e) {
             return $this->error(ErrorCode::EMAIL_UPDATE_ERROR, $e->getMessage());
@@ -80,12 +74,8 @@ final class UpdateEmailAction extends AbstractAction
     private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
-            new ErrorResponseData(
-                message: $overrideMessage ?? $code->message(),
-                status: $code->getHttpStatusCode(),
-                errorCode: $code->value,
-            ),
-            $code->getHttpStatusCode()
+            $code->toResponseData(message: $overrideMessage),
+            $code->getHttpStatusCode()->value,
         );
     }
 }

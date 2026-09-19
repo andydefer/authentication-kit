@@ -13,7 +13,6 @@ use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\AuthLoginData;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailLoginAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
@@ -57,10 +56,6 @@ final class EmailLoginAction extends AbstractAction
 
     /**
      * Prepares the action by extracting record data.
-     *
-     * @param  AbstractRecord  $record  The login request record
-     *
-     * @throws \InvalidArgumentException When the record type is invalid
      */
     protected function before(AbstractRecord $record): void
     {
@@ -75,22 +70,13 @@ final class EmailLoginAction extends AbstractAction
 
     /**
      * Processes the login request.
-     *
-     * @param  AbstractRecord  $record  The login request record
-     * @return ResponseFactory The HTTP response
-     *
-     * @throws \InvalidArgumentException When the record type is invalid
      */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof EmailLoginAuthRecord) {
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
-                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
-                ),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
+                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
             );
         }
 
@@ -104,7 +90,7 @@ final class EmailLoginAction extends AbstractAction
             if ($email === null || $password === null) {
                 $this->success = false;
                 $this->email = $email ?? 'unknown';
-                $this->errorMessage = ErrorCode::MISSING_CREDENTIALS->message();
+                $this->errorMessage = ErrorCode::MISSING_CREDENTIALS->getMessage();
                 $this->errorType = ErrorType::MISSING_CREDENTIALS;
 
                 $errors = [];
@@ -116,13 +102,8 @@ final class EmailLoginAction extends AbstractAction
                 }
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::MISSING_CREDENTIALS->message(),
-                        status: ErrorCode::MISSING_CREDENTIALS->getHttpStatusCode(),
-                        errorCode: ErrorCode::MISSING_CREDENTIALS->value,
-                        errors: DataObject::from($errors),
-                    ),
-                    ErrorCode::MISSING_CREDENTIALS->getHttpStatusCode()
+                    ErrorCode::MISSING_CREDENTIALS->toResponseData(errors: $errors),
+                    ErrorCode::MISSING_CREDENTIALS->getHttpStatusCode()->value,
                 );
             }
 
@@ -135,16 +116,12 @@ final class EmailLoginAction extends AbstractAction
 
             if ($loginResult === null) {
                 $this->success = false;
-                $this->errorMessage = ErrorCode::INVALID_CREDENTIALS->message();
+                $this->errorMessage = ErrorCode::INVALID_CREDENTIALS->getMessage();
                 $this->errorType = ErrorType::INVALID_CREDENTIALS;
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::INVALID_CREDENTIALS->message(),
-                        status: ErrorCode::INVALID_CREDENTIALS->getHttpStatusCode(),
-                        errorCode: ErrorCode::INVALID_CREDENTIALS->value
-                    ),
-                    ErrorCode::INVALID_CREDENTIALS->getHttpStatusCode()
+                    ErrorCode::INVALID_CREDENTIALS->toResponseData(),
+                    ErrorCode::INVALID_CREDENTIALS->getHttpStatusCode()->value,
                 );
             }
 
@@ -152,30 +129,25 @@ final class EmailLoginAction extends AbstractAction
 
             if ($auth === null) {
                 $this->success = false;
-                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->message();
+                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->getMessage();
                 $this->errorType = ErrorType::USER_NOT_FOUND;
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::AUTHENTICATABLE_NOT_FOUND->message(),
-                        status: ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode(),
-                        errorCode: ErrorCode::AUTHENTICATABLE_NOT_FOUND->value
-                    ),
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->toResponseData(),
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()->value,
                 );
             }
 
             $this->authId = $auth->getKey();
             $this->success = true;
 
-            // ✅ Utiliser le token déjà créé par le service
             return ResponseFactory::json(
                 new AuthLoginData(
                     message: 'Login successful',
                     auth: DataObject::from($auth->nemesisFormat()),
                     token: $loginResult->plain_token,
                 ),
-                200
+                200,
             );
 
         } catch (ValidationException $e) {
@@ -184,13 +156,8 @@ final class EmailLoginAction extends AbstractAction
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::VALIDATION_ERROR->message(),
-                    status: ErrorCode::VALIDATION_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::VALIDATION_ERROR->value,
-                    errors: DataObject::from($e->errors()),
-                ),
-                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()
+                ErrorCode::VALIDATION_ERROR->toResponseData(errors: $e->errors()),
+                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()->value,
             );
         } catch (Exception $e) {
             $this->success = false;
@@ -198,22 +165,14 @@ final class EmailLoginAction extends AbstractAction
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::LOGIN_ERROR->message(),
-                    status: ErrorCode::LOGIN_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::LOGIN_ERROR->value
-                ),
-                ErrorCode::LOGIN_ERROR->getHttpStatusCode()
+                ErrorCode::LOGIN_ERROR->toResponseData(),
+                ErrorCode::LOGIN_ERROR->getHttpStatusCode()->value,
             );
         }
     }
 
     /**
      * Logs the login attempt result.
-     *
-     * @param  bool  $success  Whether the operation succeeded
-     * @param  Exception|null  $error  The exception if one occurred
-     * @param  AbstractRecord  $record  The original request record
      */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {

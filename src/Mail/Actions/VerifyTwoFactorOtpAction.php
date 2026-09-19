@@ -7,7 +7,6 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\VerifyTwoFactorOtpAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
@@ -19,10 +18,6 @@ use Throwable;
 
 /**
  * Action to verify a two-factor authentication OTP.
- *
- * The authenticated user submits the code received on their email to
- * confirm a sensitive action. Delegates to
- * MailAuthenticationService::verifyTwoFactorOtp().
  */
 final class VerifyTwoFactorOtpAction extends AbstractAction
 {
@@ -66,7 +61,7 @@ final class VerifyTwoFactorOtpAction extends AbstractAction
                     message: 'Two-factor verification successful',
                     status: 200,
                 ),
-                200
+                200,
             );
         } catch (Throwable $e) {
             return $this->error(ErrorCode::TWO_FACTOR_VERIFY_ERROR, $e->getMessage());
@@ -79,12 +74,8 @@ final class VerifyTwoFactorOtpAction extends AbstractAction
     private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
-            new ErrorResponseData(
-                message: $overrideMessage ?? $code->message(),
-                status: $code->getHttpStatusCode(),
-                errorCode: $code->value,
-            ),
-            $code->getHttpStatusCode()
+            $code->toResponseData(message: $overrideMessage),
+            $code->getHttpStatusCode()->value,
         );
     }
 }

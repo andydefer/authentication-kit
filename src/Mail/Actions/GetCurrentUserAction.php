@@ -7,7 +7,6 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\Nemesis\Contracts\Configs\NemesisConfigInterface;
 use AndyDefer\Nemesis\Contracts\MustNemesis;
@@ -31,9 +30,6 @@ final class GetCurrentUserAction extends AbstractAction
 
     /**
      * Processes the request to get the current authenticated user.
-     *
-     * @param  AbstractRecord  $record  The request record (empty)
-     * @return ResponseFactory The HTTP response
      */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
@@ -106,12 +102,8 @@ final class GetCurrentUserAction extends AbstractAction
     private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
-            new ErrorResponseData(
-                message: $overrideMessage ?? $code->message(),
-                status: $code->getHttpStatusCode(),
-                errorCode: $code->value,
-            ),
-            $code->getHttpStatusCode()
+            $code->toResponseData(message: $overrideMessage),
+            $code->getHttpStatusCode()->value,
         );
     }
 }

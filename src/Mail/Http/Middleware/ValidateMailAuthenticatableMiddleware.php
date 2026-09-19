@@ -8,7 +8,6 @@ use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterfa
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,10 +24,6 @@ final class ValidateMailAuthenticatableMiddleware
 {
     /**
      * Handles the incoming request and validates the model type.
-     *
-     * @param  Request  $request  The incoming HTTP request
-     * @param  Closure  $next  The next middleware or controller
-     * @return Response The HTTP response
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -49,8 +44,6 @@ final class ValidateMailAuthenticatableMiddleware
             );
         }
 
-        // ✅ Bind le service via la méthode statique du modèle
-        // Cela permet d'utiliser le service personnalisé défini dans le modèle
         app()->bind(MailAuthenticationInterface::class, function ($app) use ($modelType) {
             /** @var MailAuthenticatable $modelType */
             return $modelType::getMailAuthService();
@@ -77,12 +70,8 @@ final class ValidateMailAuthenticatableMiddleware
     private function error(ErrorCode $code, ?string $overrideMessage = null): JsonResponse
     {
         return new JsonResponse(
-            (new ErrorResponseData(
-                message: $overrideMessage ?? $code->message(),
-                status: $code->getHttpStatusCode(),
-                errorCode: $code->value,
-            ))->toArray(),
-            $code->getHttpStatusCode()
+            $code->toResponseData(message: $overrideMessage)->toArray(),
+            $code->getHttpStatusCode()->value,
         );
     }
 }

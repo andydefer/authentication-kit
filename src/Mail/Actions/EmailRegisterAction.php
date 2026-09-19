@@ -15,7 +15,6 @@ use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\AuthRegisteredData;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\DataObject;
@@ -53,10 +52,6 @@ final class EmailRegisterAction extends AbstractAction
 
     /**
      * Prepares the action by extracting record data.
-     *
-     * @param  AbstractRecord  $record  The registration request record
-     *
-     * @throws \InvalidArgumentException When the record type is invalid
      */
     protected function before(AbstractRecord $record): void
     {
@@ -72,20 +67,13 @@ final class EmailRegisterAction extends AbstractAction
 
     /**
      * Processes the registration request.
-     *
-     * @param  AbstractRecord  $record  The registration request record
-     * @return ResponseFactory The HTTP response
      */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof EmailRegisterAuthRecord) {
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
-                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
-                ),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
+                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
             );
         }
 
@@ -93,23 +81,15 @@ final class EmailRegisterAction extends AbstractAction
 
         if (! class_exists($modelClass)) {
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::MODEL_NOT_FOUND->message(),
-                    status: ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode(),
-                    errorCode: ErrorCode::MODEL_NOT_FOUND->value
-                ),
-                ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode()
+                ErrorCode::MODEL_NOT_FOUND->toResponseData(),
+                ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode()->value,
             );
         }
 
         if (! in_array(MailAuthenticatable::class, class_implements($modelClass) ?: [], true)) {
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_MODEL->message(),
-                    status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_MODEL->value
-                ),
-                ErrorCode::INVALID_MODEL->getHttpStatusCode()
+                ErrorCode::INVALID_MODEL->toResponseData(),
+                ErrorCode::INVALID_MODEL->getHttpStatusCode()->value,
             );
         }
 
@@ -132,7 +112,7 @@ final class EmailRegisterAction extends AbstractAction
                     auth: DataObject::from($auth->nemesisFormat()),
                     token: $plainToken,
                 ),
-                201
+                201,
             );
 
         } catch (ValidationException $e) {
@@ -140,35 +120,22 @@ final class EmailRegisterAction extends AbstractAction
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::VALIDATION_ERROR->message(),
-                    status: ErrorCode::VALIDATION_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::VALIDATION_ERROR->value,
-                    errors: DataObject::from($e->errors()),
-                ),
-                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()
+                ErrorCode::VALIDATION_ERROR->toResponseData(errors: $e->errors()),
+                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()->value,
             );
         } catch (Exception $e) {
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::REGISTRATION_ERROR->message(),
-                    status: ErrorCode::REGISTRATION_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::REGISTRATION_ERROR->value
-                ),
-                ErrorCode::REGISTRATION_ERROR->getHttpStatusCode()
+                ErrorCode::REGISTRATION_ERROR->toResponseData(),
+                ErrorCode::REGISTRATION_ERROR->getHttpStatusCode()->value,
             );
         }
     }
 
     /**
      * Logs the registration attempt result.
-     *
-     * @param  bool  $success  Whether the operation succeeded
-     * @param  Exception|null  $error  The exception if one occurred
-     * @param  AbstractRecord  $record  The original request record
      */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {

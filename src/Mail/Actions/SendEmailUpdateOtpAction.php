@@ -7,7 +7,6 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\SendEmailUpdateOtpAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
@@ -19,10 +18,6 @@ use Throwable;
 
 /**
  * Action to send an OTP to the user's new email address.
- *
- * The authenticated user requests an email change. This action validates
- * that the submitted model_type matches the authenticated entity, then
- * delegates to MailAuthenticationService::sendEmailUpdateOtp().
  */
 final class SendEmailUpdateOtpAction extends AbstractAction
 {
@@ -62,7 +57,7 @@ final class SendEmailUpdateOtpAction extends AbstractAction
                     message: 'Email update code sent',
                     status: 200,
                 ),
-                200
+                200,
             );
         } catch (Throwable $e) {
             return $this->error(ErrorCode::EMAIL_UPDATE_SEND_ERROR, $e->getMessage());
@@ -75,12 +70,8 @@ final class SendEmailUpdateOtpAction extends AbstractAction
     private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
-            new ErrorResponseData(
-                message: $overrideMessage ?? $code->message(),
-                status: $code->getHttpStatusCode(),
-                errorCode: $code->value,
-            ),
-            $code->getHttpStatusCode()
+            $code->toResponseData(message: $overrideMessage),
+            $code->getHttpStatusCode()->value,
         );
     }
 }

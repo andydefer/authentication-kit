@@ -10,10 +10,8 @@ use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\EmailVerifiedData;
-use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\VerifyEmailRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Mail\Utils\AuthenticationResolver;
@@ -24,9 +22,6 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Handles email verification using an OTP.
- *
- * This action validates the OTP, marks the user's email as verified,
- * and logs the verification attempt.
  */
 final class VerifyEmailAction extends AbstractAction
 {
@@ -52,13 +47,6 @@ final class VerifyEmailAction extends AbstractAction
         private readonly LogRepositoryInterface $logRepository,
     ) {}
 
-    /**
-     * Prepares the action by extracting record data.
-     *
-     * @param  AbstractRecord  $record  The verify email request record
-     *
-     * @throws \InvalidArgumentException When the record type is invalid
-     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof VerifyEmailRecord) {
@@ -75,59 +63,38 @@ final class VerifyEmailAction extends AbstractAction
         $this->authenticatable = $result['authenticatable'];
     }
 
-    /**
-     * Processes the verify email request.
-     *
-     * @param  AbstractRecord  $record  The verify email request record
-     * @return ResponseFactory The HTTP response
-     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof VerifyEmailRecord) {
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
-                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
-                ),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
+                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
+                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
             );
         }
 
         try {
-            // ✅ Vérifier que le service est disponible
             if ($this->authService === null || $this->modelType === null) {
                 $this->success = false;
-                $this->errorMessage = ErrorCode::INVALID_MODEL->message();
+                $this->errorMessage = ErrorCode::INVALID_MODEL->getMessage();
                 $this->errorType = ErrorType::INVALID_MODEL;
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::INVALID_MODEL->message(),
-                        status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
-                        errorCode: ErrorCode::INVALID_MODEL->value
-                    ),
-                    ErrorCode::INVALID_MODEL->getHttpStatusCode()
+                    ErrorCode::INVALID_MODEL->toResponseData(),
+                    ErrorCode::INVALID_MODEL->getHttpStatusCode()->value,
                 );
             }
 
-            // ✅ Vérifier que l'utilisateur existe
             if ($this->authenticatable === null) {
                 $this->success = false;
-                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->message();
+                $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->getMessage();
                 $this->errorType = ErrorType::USER_NOT_FOUND;
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::AUTHENTICATABLE_NOT_FOUND->message(),
-                        status: ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode(),
-                        errorCode: ErrorCode::AUTHENTICATABLE_NOT_FOUND->value
-                    ),
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->toResponseData(),
+                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()->value,
                 );
             }
 
-            // ✅ Utiliser la méthode de l'interface MailAuthenticatable directement
             $emailVerifiedAt = $this->authenticatable->getEmailVerifiedAt();
 
             if ($emailVerifiedAt !== null) {
@@ -141,13 +108,13 @@ final class VerifyEmailAction extends AbstractAction
                         verifiedAt: $emailVerifiedAt->getValue(),
                         alreadyVerified: true,
                     ),
-                    200
+                    200,
                 );
             }
 
             $verified = $this->authService->verifyEmail(
                 email: $this->email,
-                code: $record->token
+                code: $record->token,
             );
 
             if (! $verified) {
@@ -156,12 +123,8 @@ final class VerifyEmailAction extends AbstractAction
                 $this->errorType = ErrorType::INVALID_OTP;
 
                 return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::INVALID_VERIFICATION_OTP->message(),
-                        status: ErrorCode::INVALID_VERIFICATION_OTP->getHttpStatusCode(),
-                        errorCode: ErrorCode::INVALID_VERIFICATION_OTP->value
-                    ),
-                    ErrorCode::INVALID_VERIFICATION_OTP->getHttpStatusCode()
+                    ErrorCode::INVALID_VERIFICATION_OTP->toResponseData(),
+                    ErrorCode::INVALID_VERIFICATION_OTP->getHttpStatusCode()->value,
                 );
             }
 
@@ -170,7 +133,6 @@ final class VerifyEmailAction extends AbstractAction
 
             $this->authenticatable->refresh();
 
-            // ✅ Utiliser la méthode de l'interface MailAuthenticatable directement
             $verifiedAt = $this->authenticatable->getEmailVerifiedAt();
 
             return ResponseFactory::json(
@@ -180,7 +142,7 @@ final class VerifyEmailAction extends AbstractAction
                     verifiedAt: $verifiedAt?->getValue() ?? now()->toIso8601String(),
                     alreadyVerified: false,
                 ),
-                200
+                200,
             );
 
         } catch (Exception $e) {
@@ -189,23 +151,12 @@ final class VerifyEmailAction extends AbstractAction
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::VERIFY_EMAIL_ERROR->message(),
-                    status: ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::VERIFY_EMAIL_ERROR->value
-                ),
-                ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()
+                ErrorCode::VERIFY_EMAIL_ERROR->toResponseData(),
+                ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()->value,
             );
         }
     }
 
-    /**
-     * Logs the verify email attempt result.
-     *
-     * @param  bool  $success  Whether the operation succeeded
-     * @param  Exception|null  $error  The exception if one occurred
-     * @param  AbstractRecord  $record  The original request record
-     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->email === null) {
