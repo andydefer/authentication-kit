@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\UpdateEmailAuthRecord;
@@ -36,15 +37,15 @@ final class UpdateEmailAction extends AbstractAction
         $authenticatable = $this->helper->getCurrentAuthenticatable();
 
         if ($authenticatable === null) {
-            return $this->unauthenticated();
+            return $this->error(ErrorCode::UNAUTHENTICATED);
         }
 
         if ($authenticatable::class !== $record->model_type) {
-            return $this->modelTypeMismatch();
+            return $this->error(ErrorCode::MODEL_TYPE_MISMATCH);
         }
 
         if (! $authenticatable instanceof MustNemesis) {
-            return $this->userFormatError();
+            return $this->error(ErrorCode::USER_FORMAT_ERROR);
         }
 
         try {
@@ -58,14 +59,7 @@ final class UpdateEmailAction extends AbstractAction
             );
 
             if (! $updated) {
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: 'Invalid or expired code, or email already taken',
-                        status: 400,
-                        errorCode: 'EMAIL_UPDATE_FAILED',
-                    ),
-                    400
-                );
+                return $this->error(ErrorCode::EMAIL_UPDATE_FAILED);
             }
 
             return ResponseFactory::json(
@@ -76,50 +70,22 @@ final class UpdateEmailAction extends AbstractAction
                 200
             );
         } catch (Throwable $e) {
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: $e->getMessage(),
-                    status: 422,
-                    errorCode: 'EMAIL_UPDATE_ERROR',
-                ),
-                422
-            );
+            return $this->error(ErrorCode::EMAIL_UPDATE_ERROR, $e->getMessage());
         }
     }
 
-    private function unauthenticated(): ResponseFactory
+    /**
+     * Builds a standardized error response from an ErrorCode case.
+     */
+    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
             new ErrorResponseData(
-                message: 'Unauthenticated',
-                status: 401,
-                errorCode: 'UNAUTHENTICATED',
+                message: $overrideMessage ?? $code->message(),
+                status: $code->getHttpStatusCode(),
+                errorCode: $code->value,
             ),
-            401
-        );
-    }
-
-    private function modelTypeMismatch(): ResponseFactory
-    {
-        return ResponseFactory::json(
-            new ErrorResponseData(
-                message: 'Model type mismatch',
-                status: 422,
-                errorCode: 'MODEL_TYPE_MISMATCH',
-            ),
-            422
-        );
-    }
-
-    private function userFormatError(): ResponseFactory
-    {
-        return ResponseFactory::json(
-            new ErrorResponseData(
-                message: 'User data format not available',
-                status: 422,
-                errorCode: 'USER_FORMAT_ERROR',
-            ),
-            422
+            $code->getHttpStatusCode()
         );
     }
 }

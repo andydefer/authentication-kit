@@ -72,33 +72,17 @@ final class ResetPasswordAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof ResetPasswordRecord) {
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
-                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
-                ),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
-            );
+            return $this->error(ErrorCode::INVALID_RECORD_TYPE);
         }
 
-        // ✅ Vérifier que le service est disponible
         if ($this->authService === null) {
             $this->success = false;
             $this->errorMessage = ErrorCode::INVALID_MODEL->message();
             $this->errorType = ErrorType::INVALID_MODEL;
 
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_MODEL->message(),
-                    status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_MODEL->value
-                ),
-                ErrorCode::INVALID_MODEL->getHttpStatusCode()
-            );
+            return $this->error(ErrorCode::INVALID_MODEL);
         }
 
-        // ✅ Valider le mot de passe avec les règles personnalisables
         $rules = $this->authService::getPasswordValidationRules();
         $validator = Validator::make(
             [
@@ -110,17 +94,17 @@ final class ResetPasswordAction extends AbstractAction
 
         if ($validator->fails()) {
             $this->success = false;
-            $this->errorMessage = 'Password validation failed';
+            $this->errorMessage = ErrorCode::PASSWORD_VALIDATION_FAILED->message();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
             return ResponseFactory::json(
                 new ErrorResponseData(
-                    message: 'Password validation failed',
-                    status: 422,
-                    errorCode: 'PASSWORD_VALIDATION_FAILED',
-                    errors: DataObject::from($validator->errors()->toArray())
+                    message: ErrorCode::PASSWORD_VALIDATION_FAILED->message(),
+                    status: ErrorCode::PASSWORD_VALIDATION_FAILED->getHttpStatusCode(),
+                    errorCode: ErrorCode::PASSWORD_VALIDATION_FAILED->value,
+                    errors: DataObject::from($validator->errors()->toArray()),
                 ),
-                422
+                ErrorCode::PASSWORD_VALIDATION_FAILED->getHttpStatusCode()
             );
         }
 
@@ -138,14 +122,7 @@ final class ResetPasswordAction extends AbstractAction
                 $this->errorMessage = ErrorCode::INVALID_RESET_OTP->message();
                 $this->errorType = ErrorType::INVALID_OTP;
 
-                return ResponseFactory::json(
-                    new ErrorResponseData(
-                        message: ErrorCode::INVALID_RESET_OTP->message(),
-                        status: ErrorCode::INVALID_RESET_OTP->getHttpStatusCode(),
-                        errorCode: ErrorCode::INVALID_RESET_OTP->value
-                    ),
-                    ErrorCode::INVALID_RESET_OTP->getHttpStatusCode()
-                );
+                return $this->error(ErrorCode::INVALID_RESET_OTP);
             }
 
             $this->success = true;
@@ -164,14 +141,7 @@ final class ResetPasswordAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::RESET_PASSWORD_ERROR->message(),
-                    status: ErrorCode::RESET_PASSWORD_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::RESET_PASSWORD_ERROR->value
-                ),
-                ErrorCode::RESET_PASSWORD_ERROR->getHttpStatusCode()
-            );
+            return $this->error(ErrorCode::RESET_PASSWORD_ERROR);
         }
     }
 
@@ -203,6 +173,21 @@ final class ResetPasswordAction extends AbstractAction
             email: $this->email,
             error: $errorMessage,
             errorType: $errorType,
+        );
+    }
+
+    /**
+     * Builds a standardized error response from an ErrorCode case.
+     */
+    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
+    {
+        return ResponseFactory::json(
+            new ErrorResponseData(
+                message: $overrideMessage ?? $code->message(),
+                status: $code->getHttpStatusCode(),
+                errorCode: $code->value,
+            ),
+            $code->getHttpStatusCode()
         );
     }
 }

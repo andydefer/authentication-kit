@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\Nemesis\Contracts\Configs\NemesisConfigInterface;
@@ -39,44 +40,37 @@ final class GetCurrentUserAction extends AbstractAction
         $plainToken = $this->resolvePlainToken();
 
         if ($plainToken === null) {
-            return $this->unauthenticated();
+            return $this->error(ErrorCode::UNAUTHENTICATED);
         }
 
         $tokenHash = $this->hashToken($plainToken);
         $tokenModel = $this->nemesis->findByHash($tokenHash);
 
         if ($tokenModel === null) {
-            return $this->unauthenticated();
+            return $this->error(ErrorCode::UNAUTHENTICATED);
         }
 
         if ($tokenModel->isExpired()) {
-            return $this->unauthenticated();
+            return $this->error(ErrorCode::UNAUTHENTICATED);
         }
 
         $tokenableType = $tokenModel->tokenable_type;
         $tokenableId = $tokenModel->tokenable_id;
 
         if ($tokenableType === null || $tokenableId === null) {
-            return $this->unauthenticated();
+            return $this->error(ErrorCode::UNAUTHENTICATED);
         }
 
         $authenticatable = $tokenableType::find($tokenableId);
 
         if ($authenticatable === null) {
-            return $this->unauthenticated();
+            return $this->error(ErrorCode::UNAUTHENTICATED);
         }
 
         $this->nemesis->updateLastUsed($tokenModel);
 
         if (! $authenticatable instanceof MustNemesis) {
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: 'User data format not available',
-                    status: 422,
-                    errorCode: 'USER_FORMAT_ERROR',
-                ),
-                422
-            );
+            return $this->error(ErrorCode::USER_FORMAT_ERROR);
         }
 
         return ResponseFactory::json($authenticatable->nemesisFormat(), 200);
@@ -107,17 +101,17 @@ final class GetCurrentUserAction extends AbstractAction
     }
 
     /**
-     * Returns a standard 401 Unauthenticated response.
+     * Builds a standardized error response from an ErrorCode case.
      */
-    private function unauthenticated(): ResponseFactory
+    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
     {
         return ResponseFactory::json(
             new ErrorResponseData(
-                message: 'Unauthenticated',
-                status: 401,
-                errorCode: 'UNAUTHENTICATED',
+                message: $overrideMessage ?? $code->message(),
+                status: $code->getHttpStatusCode(),
+                errorCode: $code->value,
             ),
-            401
+            $code->getHttpStatusCode()
         );
     }
 }

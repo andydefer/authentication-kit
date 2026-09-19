@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Mail\Http\Middleware;
 
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
 use AndyDefer\AuthenticationKit\Mail\Datas\ErrorResponseData;
@@ -34,35 +35,17 @@ final class ValidateMailAuthenticatableMiddleware
         $modelType = $request->input('model_type');
 
         if ($modelType === null) {
-            return new JsonResponse(
-                (new ErrorResponseData(
-                    message: 'model_type is required',
-                    status: 400,
-                    errorCode: 'MODEL_TYPE_REQUIRED'
-                ))->toArray(),
-                400
-            );
+            return $this->error(ErrorCode::MODEL_TYPE_REQUIRED);
         }
 
         if (! class_exists($modelType)) {
-            return new JsonResponse(
-                (new ErrorResponseData(
-                    message: "Model {$modelType} does not exist",
-                    status: 422,
-                    errorCode: 'MODEL_NOT_FOUND'
-                ))->toArray(),
-                422
-            );
+            return $this->error(ErrorCode::MODEL_NOT_FOUND, "Model {$modelType} does not exist");
         }
 
         if (! in_array(MailAuthenticatable::class, class_implements($modelType) ?: [], true)) {
-            return new JsonResponse(
-                (new ErrorResponseData(
-                    message: "Model {$modelType} must implement ".MailAuthenticatable::class,
-                    status: 422,
-                    errorCode: 'INVALID_MODEL'
-                ))->toArray(),
-                422
+            return $this->error(
+                ErrorCode::INVALID_MODEL,
+                "Model {$modelType} must implement ".MailAuthenticatable::class
             );
         }
 
@@ -86,5 +69,20 @@ final class ValidateMailAuthenticatableMiddleware
         }
 
         return $response;
+    }
+
+    /**
+     * Builds a standardized error response from an ErrorCode case.
+     */
+    private function error(ErrorCode $code, ?string $overrideMessage = null): JsonResponse
+    {
+        return new JsonResponse(
+            (new ErrorResponseData(
+                message: $overrideMessage ?? $code->message(),
+                status: $code->getHttpStatusCode(),
+                errorCode: $code->value,
+            ))->toArray(),
+            $code->getHttpStatusCode()
+        );
     }
 }

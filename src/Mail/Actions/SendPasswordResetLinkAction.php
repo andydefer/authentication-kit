@@ -75,56 +75,31 @@ final class SendPasswordResetLinkAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof SendPasswordResetLinkRecord) {
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_RECORD_TYPE->message(),
-                    status: ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_RECORD_TYPE->value
-                ),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()
-            );
+            return $this->error(ErrorCode::INVALID_RECORD_TYPE);
         }
 
-        // ✅ Vérifier que le service est disponible
         if ($this->authService === null) {
             $this->success = false;
             $this->errorMessage = ErrorCode::INVALID_MODEL->message();
             $this->errorType = ErrorType::INVALID_MODEL;
 
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: ErrorCode::INVALID_MODEL->message(),
-                    status: ErrorCode::INVALID_MODEL->getHttpStatusCode(),
-                    errorCode: ErrorCode::INVALID_MODEL->value
-                ),
-                ErrorCode::INVALID_MODEL->getHttpStatusCode()
-            );
+            return $this->error(ErrorCode::INVALID_MODEL);
         }
 
         $this->email = $record->email;
         $this->userFound = $this->authService->userExists($record->email);
 
-        // ✅ Vérifier si l'utilisateur existe AVANT d'envoyer l'OTP
         if (! $this->userFound) {
             $this->success = false;
             $this->errorMessage = 'User not found';
             $this->errorType = ErrorType::USER_NOT_FOUND;
 
-            // ✅ On retourne une erreur générique pour ne pas révéler l'existence de l'utilisateur
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: 'We were unable to process your request. Please try again.',
-                    status: 400,
-                    errorCode: 'RESET_LINK_FAILED'
-                ),
-                400
-            );
+            return $this->error(ErrorCode::RESET_LINK_FAILED);
         }
 
         try {
             $this->success = $this->authService->sendPasswordResetOtp($record->email);
 
-            // ✅ Succès : On retourne une 200
             return ResponseFactory::json(
                 new PasswordResetLinkSentData(
                     message: 'Password reset OTP sent successfully',
@@ -133,21 +108,12 @@ final class SendPasswordResetLinkAction extends AbstractAction
                 ),
                 200
             );
-
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::RATE_LIMIT_EXCEEDED;
 
-            // ✅ Erreur technique : On retourne une erreur générique
-            return ResponseFactory::json(
-                new ErrorResponseData(
-                    message: 'We were unable to send the reset link. Please try again.',
-                    status: ErrorCode::RESET_LINK_ERROR->getHttpStatusCode(),
-                    errorCode: ErrorCode::RESET_LINK_ERROR->value
-                ),
-                ErrorCode::RESET_LINK_ERROR->getHttpStatusCode()
-            );
+            return $this->error(ErrorCode::RESET_LINK_ERROR);
         }
     }
 
@@ -174,6 +140,21 @@ final class SendPasswordResetLinkAction extends AbstractAction
             success: $this->success,
             error: $errorMessage,
             errorType: $errorType,
+        );
+    }
+
+    /**
+     * Builds a standardized error response from an ErrorCode case.
+     */
+    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
+    {
+        return ResponseFactory::json(
+            new ErrorResponseData(
+                message: $overrideMessage ?? $code->message(),
+                status: $code->getHttpStatusCode(),
+                errorCode: $code->value,
+            ),
+            $code->getHttpStatusCode()
         );
     }
 }
