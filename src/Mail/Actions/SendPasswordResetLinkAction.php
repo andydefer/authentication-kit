@@ -57,7 +57,7 @@ final class SendPasswordResetLinkAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof SendPasswordResetLinkRecord) {
-            return $this->error(ErrorCode::INVALID_RECORD_TYPE);
+            return ErrorCode::INVALID_RECORD_TYPE->toJsonResponseFactory();
         }
 
         if ($this->authService === null) {
@@ -65,7 +65,7 @@ final class SendPasswordResetLinkAction extends AbstractAction
             $this->errorMessage = ErrorCode::INVALID_MODEL->getMessage();
             $this->errorType = ErrorType::INVALID_MODEL;
 
-            return $this->error(ErrorCode::INVALID_MODEL);
+            return ErrorCode::INVALID_MODEL->toJsonResponseFactory();
         }
 
         $this->email = $record->email;
@@ -76,7 +76,7 @@ final class SendPasswordResetLinkAction extends AbstractAction
             $this->errorMessage = 'User not found';
             $this->errorType = ErrorType::USER_NOT_FOUND;
 
-            return $this->error(ErrorCode::RESET_LINK_FAILED);
+            return ErrorCode::RESET_LINK_FAILED->toJsonResponseFactory();
         }
 
         try {
@@ -95,7 +95,7 @@ final class SendPasswordResetLinkAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::RATE_LIMIT_EXCEEDED;
 
-            return $this->error(ErrorCode::RESET_LINK_ERROR);
+            return ErrorCode::RESET_LINK_ERROR->toJsonResponseFactory();
         }
     }
 
@@ -113,17 +113,6 @@ final class SendPasswordResetLinkAction extends AbstractAction
             success: $this->success,
             error: $errorMessage,
             errorType: $errorType,
-        );
-    }
-
-    /**
-     * Builds a standardized error response from an ErrorCode case.
-     */
-    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
-    {
-        return ResponseFactory::json(
-            $code->toResponseData(message: $overrideMessage),
-            $code->getHttpStatusCode()->value,
         );
     }
 }

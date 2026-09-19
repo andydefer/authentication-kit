@@ -25,9 +25,6 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Handles email-based user login authentication.
- *
- * This action validates user credentials, creates an authentication token
- * upon successful login, and logs the authentication attempt.
  */
 final class EmailLoginAction extends AbstractAction
 {
@@ -54,9 +51,6 @@ final class EmailLoginAction extends AbstractAction
         private readonly AuthenticationKitConfigInterface $config,
     ) {}
 
-    /**
-     * Prepares the action by extracting record data.
-     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof EmailLoginAuthRecord) {
@@ -68,16 +62,10 @@ final class EmailLoginAction extends AbstractAction
         $this->userAgent = $record->user_agent;
     }
 
-    /**
-     * Processes the login request.
-     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof EmailLoginAuthRecord) {
-            return ResponseFactory::json(
-                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
-            );
+            return ErrorCode::INVALID_RECORD_TYPE->toJsonResponseFactory();
         }
 
         try {
@@ -101,10 +89,7 @@ final class EmailLoginAction extends AbstractAction
                     $errors['password'] = ['The password field is required.'];
                 }
 
-                return ResponseFactory::json(
-                    ErrorCode::MISSING_CREDENTIALS->toResponseData(errors: $errors),
-                    ErrorCode::MISSING_CREDENTIALS->getHttpStatusCode()->value,
-                );
+                return ErrorCode::MISSING_CREDENTIALS->toJsonResponseFactory(errors: $errors);
             }
 
             $this->email = $email;
@@ -119,10 +104,7 @@ final class EmailLoginAction extends AbstractAction
                 $this->errorMessage = ErrorCode::INVALID_CREDENTIALS->getMessage();
                 $this->errorType = ErrorType::INVALID_CREDENTIALS;
 
-                return ResponseFactory::json(
-                    ErrorCode::INVALID_CREDENTIALS->toResponseData(),
-                    ErrorCode::INVALID_CREDENTIALS->getHttpStatusCode()->value,
-                );
+                return ErrorCode::INVALID_CREDENTIALS->toJsonResponseFactory();
             }
 
             $auth = $modelClass::where('email', $email)->first();
@@ -132,10 +114,7 @@ final class EmailLoginAction extends AbstractAction
                 $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->getMessage();
                 $this->errorType = ErrorType::USER_NOT_FOUND;
 
-                return ResponseFactory::json(
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->toResponseData(),
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()->value,
-                );
+                return ErrorCode::AUTHENTICATABLE_NOT_FOUND->toJsonResponseFactory();
             }
 
             $this->authId = $auth->getKey();
@@ -155,25 +134,16 @@ final class EmailLoginAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ResponseFactory::json(
-                ErrorCode::VALIDATION_ERROR->toResponseData(errors: $e->errors()),
-                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()->value,
-            );
+            return ErrorCode::VALIDATION_ERROR->toJsonResponseFactory(errors: $e->errors());
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ResponseFactory::json(
-                ErrorCode::LOGIN_ERROR->toResponseData(),
-                ErrorCode::LOGIN_ERROR->getHttpStatusCode()->value,
-            );
+            return ErrorCode::LOGIN_ERROR->toJsonResponseFactory();
         }
     }
 
-    /**
-     * Logs the login attempt result.
-     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->success && $this->authId !== null) {

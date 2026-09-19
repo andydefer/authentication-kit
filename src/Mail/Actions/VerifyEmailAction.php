@@ -66,10 +66,7 @@ final class VerifyEmailAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof VerifyEmailRecord) {
-            return ResponseFactory::json(
-                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
-            );
+            return ErrorCode::INVALID_RECORD_TYPE->toJsonResponseFactory();
         }
 
         try {
@@ -78,10 +75,7 @@ final class VerifyEmailAction extends AbstractAction
                 $this->errorMessage = ErrorCode::INVALID_MODEL->getMessage();
                 $this->errorType = ErrorType::INVALID_MODEL;
 
-                return ResponseFactory::json(
-                    ErrorCode::INVALID_MODEL->toResponseData(),
-                    ErrorCode::INVALID_MODEL->getHttpStatusCode()->value,
-                );
+                return ErrorCode::INVALID_MODEL->toJsonResponseFactory();
             }
 
             if ($this->authenticatable === null) {
@@ -89,10 +83,7 @@ final class VerifyEmailAction extends AbstractAction
                 $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->getMessage();
                 $this->errorType = ErrorType::USER_NOT_FOUND;
 
-                return ResponseFactory::json(
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->toResponseData(),
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()->value,
-                );
+                return ErrorCode::AUTHENTICATABLE_NOT_FOUND->toJsonResponseFactory();
             }
 
             $emailVerifiedAt = $this->authenticatable->getEmailVerifiedAt();
@@ -122,10 +113,7 @@ final class VerifyEmailAction extends AbstractAction
                 $this->errorMessage = 'Invalid or expired verification OTP';
                 $this->errorType = ErrorType::INVALID_OTP;
 
-                return ResponseFactory::json(
-                    ErrorCode::INVALID_VERIFICATION_OTP->toResponseData(),
-                    ErrorCode::INVALID_VERIFICATION_OTP->getHttpStatusCode()->value,
-                );
+                return ErrorCode::INVALID_VERIFICATION_OTP->toJsonResponseFactory();
             }
 
             $this->success = true;
@@ -150,10 +138,7 @@ final class VerifyEmailAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ResponseFactory::json(
-                ErrorCode::VERIFY_EMAIL_ERROR->toResponseData(),
-                ErrorCode::VERIFY_EMAIL_ERROR->getHttpStatusCode()->value,
-            );
+            return ErrorCode::VERIFY_EMAIL_ERROR->toJsonResponseFactory();
         }
     }
 

@@ -31,15 +31,15 @@ final class SendTwoFactorOtpAction extends AbstractAction
         $authenticatable = $this->helper->getCurrentAuthenticatable();
 
         if ($authenticatable === null) {
-            return $this->error(ErrorCode::UNAUTHENTICATED);
+            return ErrorCode::UNAUTHENTICATED->toJsonResponseFactory();
         }
 
         if ($authenticatable::class !== $record->model_type) {
-            return $this->error(ErrorCode::MODEL_TYPE_MISMATCH);
+            return ErrorCode::MODEL_TYPE_MISMATCH->toJsonResponseFactory();
         }
 
         if (! $authenticatable instanceof MustNemesis) {
-            return $this->error(ErrorCode::USER_FORMAT_ERROR);
+            return ErrorCode::USER_FORMAT_ERROR->toJsonResponseFactory();
         }
 
         try {
@@ -52,7 +52,7 @@ final class SendTwoFactorOtpAction extends AbstractAction
             );
 
             if (! $sent) {
-                return $this->error(ErrorCode::TWO_FACTOR_SEND_FAILED);
+                return ErrorCode::TWO_FACTOR_SEND_FAILED->toJsonResponseFactory();
             }
 
             return ResponseFactory::json(
@@ -63,18 +63,9 @@ final class SendTwoFactorOtpAction extends AbstractAction
                 200,
             );
         } catch (Throwable $e) {
-            return $this->error(ErrorCode::TWO_FACTOR_SEND_ERROR, $e->getMessage());
+            return ErrorCode::TWO_FACTOR_SEND_ERROR->toJsonResponseFactory(
+                message: $e->getMessage(),
+            );
         }
-    }
-
-    /**
-     * Builds a standardized error response from an ErrorCode case.
-     */
-    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
-    {
-        return ResponseFactory::json(
-            $code->toResponseData(message: $overrideMessage),
-            $code->getHttpStatusCode()->value,
-        );
     }
 }

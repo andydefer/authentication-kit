@@ -24,9 +24,6 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Handles user registration via email authentication.
- *
- * This action creates a new user account, optionally generates an authentication
- * token, and logs the registration attempt.
  */
 final class EmailRegisterAction extends AbstractAction
 {
@@ -50,9 +47,6 @@ final class EmailRegisterAction extends AbstractAction
         private readonly AuthenticationKitConfigInterface $config,
     ) {}
 
-    /**
-     * Prepares the action by extracting record data.
-     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof EmailRegisterAuthRecord) {
@@ -65,32 +59,20 @@ final class EmailRegisterAction extends AbstractAction
         $this->userAgent = $record->user_agent;
     }
 
-    /**
-     * Processes the registration request.
-     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof EmailRegisterAuthRecord) {
-            return ResponseFactory::json(
-                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
-            );
+            return ErrorCode::INVALID_RECORD_TYPE->toJsonResponseFactory();
         }
 
         $modelClass = $record->model_type;
 
         if (! class_exists($modelClass)) {
-            return ResponseFactory::json(
-                ErrorCode::MODEL_NOT_FOUND->toResponseData(),
-                ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode()->value,
-            );
+            return ErrorCode::MODEL_NOT_FOUND->toJsonResponseFactory();
         }
 
         if (! in_array(MailAuthenticatable::class, class_implements($modelClass) ?: [], true)) {
-            return ResponseFactory::json(
-                ErrorCode::INVALID_MODEL->toResponseData(),
-                ErrorCode::INVALID_MODEL->getHttpStatusCode()->value,
-            );
+            return ErrorCode::INVALID_MODEL->toJsonResponseFactory();
         }
 
         try {
@@ -119,24 +101,15 @@ final class EmailRegisterAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ResponseFactory::json(
-                ErrorCode::VALIDATION_ERROR->toResponseData(errors: $e->errors()),
-                ErrorCode::VALIDATION_ERROR->getHttpStatusCode()->value,
-            );
+            return ErrorCode::VALIDATION_ERROR->toJsonResponseFactory(errors: $e->errors());
         } catch (Exception $e) {
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ResponseFactory::json(
-                ErrorCode::REGISTRATION_ERROR->toResponseData(),
-                ErrorCode::REGISTRATION_ERROR->getHttpStatusCode()->value,
-            );
+            return ErrorCode::REGISTRATION_ERROR->toJsonResponseFactory();
         }
     }
 
-    /**
-     * Logs the registration attempt result.
-     */
     protected function after(bool $success, ?Exception $error = null, AbstractRecord $record = new EmptyRecord): void
     {
         if ($this->authId !== null) {

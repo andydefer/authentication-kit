@@ -63,10 +63,7 @@ final class SendEmailVerificationAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof SendEmailVerificationRecord) {
-            return ResponseFactory::json(
-                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
-                ErrorCode::INVALID_RECORD_TYPE->getHttpStatusCode()->value,
-            );
+            return ErrorCode::INVALID_RECORD_TYPE->toJsonResponseFactory();
         }
 
         try {
@@ -75,10 +72,7 @@ final class SendEmailVerificationAction extends AbstractAction
                 $this->errorMessage = ErrorCode::MODEL_NOT_FOUND->getMessage();
                 $this->errorType = ErrorType::MODEL_NOT_FOUND;
 
-                return ResponseFactory::json(
-                    ErrorCode::MODEL_NOT_FOUND->toResponseData(),
-                    ErrorCode::MODEL_NOT_FOUND->getHttpStatusCode()->value,
-                );
+                return ErrorCode::MODEL_NOT_FOUND->toJsonResponseFactory();
             }
 
             if ($this->authenticatable === null || $this->authService === null) {
@@ -86,10 +80,7 @@ final class SendEmailVerificationAction extends AbstractAction
                 $this->errorMessage = ErrorCode::AUTHENTICATABLE_NOT_FOUND->getMessage();
                 $this->errorType = ErrorType::USER_NOT_FOUND;
 
-                return ResponseFactory::json(
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->toResponseData(),
-                    ErrorCode::AUTHENTICATABLE_NOT_FOUND->getHttpStatusCode()->value,
-                );
+                return ErrorCode::AUTHENTICATABLE_NOT_FOUND->toJsonResponseFactory();
             }
 
             $isVerified = $this->authService->isEmailVerified($this->authenticatable);
@@ -115,10 +106,7 @@ final class SendEmailVerificationAction extends AbstractAction
                 $this->errorMessage = 'Failed to send verification OTP';
                 $this->errorType = ErrorType::VERIFICATION_OTP_SEND_FAILED;
 
-                return ResponseFactory::json(
-                    ErrorCode::VERIFICATION_OTP_RESEND_FAILED->toResponseData(),
-                    ErrorCode::VERIFICATION_OTP_RESEND_FAILED->getHttpStatusCode()->value,
-                );
+                return ErrorCode::VERIFICATION_OTP_RESEND_FAILED->toJsonResponseFactory();
             }
 
             $this->success = true;
@@ -137,10 +125,7 @@ final class SendEmailVerificationAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VERIFICATION_OTP_SEND_FAILED;
 
-            return ResponseFactory::json(
-                ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->toResponseData(),
-                ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->getHttpStatusCode()->value,
-            );
+            return ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->toJsonResponseFactory();
         }
     }
 

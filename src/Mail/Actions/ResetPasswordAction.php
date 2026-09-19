@@ -61,7 +61,7 @@ final class ResetPasswordAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof ResetPasswordRecord) {
-            return $this->error(ErrorCode::INVALID_RECORD_TYPE);
+            return ErrorCode::INVALID_RECORD_TYPE->toJsonResponseFactory();
         }
 
         if ($this->authService === null) {
@@ -69,7 +69,7 @@ final class ResetPasswordAction extends AbstractAction
             $this->errorMessage = ErrorCode::INVALID_MODEL->getMessage();
             $this->errorType = ErrorType::INVALID_MODEL;
 
-            return $this->error(ErrorCode::INVALID_MODEL);
+            return ErrorCode::INVALID_MODEL->toJsonResponseFactory();
         }
 
         $rules = $this->authService::getPasswordValidationRules();
@@ -86,11 +86,8 @@ final class ResetPasswordAction extends AbstractAction
             $this->errorMessage = ErrorCode::PASSWORD_VALIDATION_FAILED->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ResponseFactory::json(
-                ErrorCode::PASSWORD_VALIDATION_FAILED->toResponseData(
-                    errors: $validator->errors()->toArray(),
-                ),
-                ErrorCode::PASSWORD_VALIDATION_FAILED->getHttpStatusCode()->value,
+            return ErrorCode::PASSWORD_VALIDATION_FAILED->toJsonResponseFactory(
+                errors: $validator->errors()->toArray(),
             );
         }
 
@@ -108,7 +105,7 @@ final class ResetPasswordAction extends AbstractAction
                 $this->errorMessage = ErrorCode::INVALID_RESET_OTP->getMessage();
                 $this->errorType = ErrorType::INVALID_OTP;
 
-                return $this->error(ErrorCode::INVALID_RESET_OTP);
+                return ErrorCode::INVALID_RESET_OTP->toJsonResponseFactory();
             }
 
             $this->success = true;
@@ -127,7 +124,7 @@ final class ResetPasswordAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return $this->error(ErrorCode::RESET_PASSWORD_ERROR);
+            return ErrorCode::RESET_PASSWORD_ERROR->toJsonResponseFactory();
         }
     }
 
@@ -152,17 +149,6 @@ final class ResetPasswordAction extends AbstractAction
             email: $this->email,
             error: $errorMessage,
             errorType: $errorType,
-        );
-    }
-
-    /**
-     * Builds a standardized error response from an ErrorCode case.
-     */
-    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
-    {
-        return ResponseFactory::json(
-            $code->toResponseData(message: $overrideMessage),
-            $code->getHttpStatusCode()->value,
         );
     }
 }

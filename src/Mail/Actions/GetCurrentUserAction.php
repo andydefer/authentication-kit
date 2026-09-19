@@ -15,10 +15,6 @@ use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 
 /**
  * Action to get the current authenticated user.
- *
- * This action retrieves the authenticated user from the request
- * (either from Bearer token or cookie) and returns their formatted data.
- * If no user is authenticated, returns a 401 Unauthorized response.
  */
 final class GetCurrentUserAction extends AbstractAction
 {
@@ -28,53 +24,47 @@ final class GetCurrentUserAction extends AbstractAction
         private readonly NemesisConfigInterface $config,
     ) {}
 
-    /**
-     * Processes the request to get the current authenticated user.
-     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         $plainToken = $this->resolvePlainToken();
 
         if ($plainToken === null) {
-            return $this->error(ErrorCode::UNAUTHENTICATED);
+            return ErrorCode::UNAUTHENTICATED->toJsonResponseFactory();
         }
 
         $tokenHash = $this->hashToken($plainToken);
         $tokenModel = $this->nemesis->findByHash($tokenHash);
 
         if ($tokenModel === null) {
-            return $this->error(ErrorCode::UNAUTHENTICATED);
+            return ErrorCode::UNAUTHENTICATED->toJsonResponseFactory();
         }
 
         if ($tokenModel->isExpired()) {
-            return $this->error(ErrorCode::UNAUTHENTICATED);
+            return ErrorCode::UNAUTHENTICATED->toJsonResponseFactory();
         }
 
         $tokenableType = $tokenModel->tokenable_type;
         $tokenableId = $tokenModel->tokenable_id;
 
         if ($tokenableType === null || $tokenableId === null) {
-            return $this->error(ErrorCode::UNAUTHENTICATED);
+            return ErrorCode::UNAUTHENTICATED->toJsonResponseFactory();
         }
 
         $authenticatable = $tokenableType::find($tokenableId);
 
         if ($authenticatable === null) {
-            return $this->error(ErrorCode::UNAUTHENTICATED);
+            return ErrorCode::UNAUTHENTICATED->toJsonResponseFactory();
         }
 
         $this->nemesis->updateLastUsed($tokenModel);
 
         if (! $authenticatable instanceof MustNemesis) {
-            return $this->error(ErrorCode::USER_FORMAT_ERROR);
+            return ErrorCode::USER_FORMAT_ERROR->toJsonResponseFactory();
         }
 
         return ResponseFactory::json($authenticatable->nemesisFormat(), 200);
     }
 
-    /**
-     * Resolves the plain token from the Bearer header or the cookie.
-     */
     private function resolvePlainToken(): ?string
     {
         $bearerToken = request()->bearerToken();
@@ -86,24 +76,10 @@ final class GetCurrentUserAction extends AbstractAction
         return $this->cookieStorage->get(request());
     }
 
-    /**
-     * Hashes the plain token using the configured hash algorithm.
-     */
     private function hashToken(string $plainToken): string
     {
         $algorithm = $this->config->tokenConfig()->hash_algorithm;
 
         return hash($algorithm, $plainToken);
-    }
-
-    /**
-     * Builds a standardized error response from an ErrorCode case.
-     */
-    private function error(ErrorCode $code, ?string $overrideMessage = null): ResponseFactory
-    {
-        return ResponseFactory::json(
-            $code->toResponseData(message: $overrideMessage),
-            $code->getHttpStatusCode()->value,
-        );
     }
 }

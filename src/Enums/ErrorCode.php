@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Enums;
 
+use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\DomainStructures\Utils\StrictAssociative;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
 use AndyDefer\Nemesis\Contracts\ErrorDescribable;
@@ -169,5 +170,18 @@ enum ErrorCode: string implements ErrorDescribable
             'errorCode' => $this->value,
             'errors' => $errors,
         ]);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function toJsonResponseFactory(
+        ?string $message = null,
+        array|StrictAssociative|StrictDataObject|null $errors = null,
+    ): ResponseFactory {
+        return ResponseFactory::json(
+            $this->toResponseData($message, $errors),
+            $this->getHttpStatusCode(),
+        );
     }
 }
