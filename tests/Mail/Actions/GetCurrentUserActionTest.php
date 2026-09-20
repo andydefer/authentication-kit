@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Mail\Actions;
 
-use AndyDefer\Actions\Http\Requests\EmptyRequest;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\GetCurrentUserAction;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLoginRequest;
+use AndyDefer\AuthenticationKit\Mail\Requests\GetCurrentUserRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
@@ -42,7 +42,7 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
 
         // ✅ Une seule route pour les deux cas (Bearer token ET cookie)
         Route::post('api/get-current-user', action_route(
-            EmptyRequest::class,
+            GetCurrentUserRequest::class,
             GetCurrentUserAction::class
         ))->name('get-current-user');
 
@@ -424,5 +424,130 @@ final class GetCurrentUserActionTest extends IntegrationTestCase
         $response->assertJson([
             'errorCode' => 'UNAUTHENTICATED',
         ]);
+    }
+
+    // ============================================================================
+    // Tests mode=simple (défaut) et mode=detailed
+    // ============================================================================
+
+    public function test_me_defaults_to_simple_mode_when_no_mode_provided(): void
+    {
+        [$user, $token] = $this->createUserAndLogin();
+
+        $response = $this->postJson('api/get-current-user', [], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'id' => $user->id,
+            'name' => 'Test User',
+            'email' => 'test@example.com',
+        ]);
+        $response->assertJsonMissing(['modelType']);
+        $response->assertJsonMissing(['user']);
+    }
+
+    public function test_me_returns_simple_payload_when_mode_is_simple(): void
+    {
+        [$user, $token] = $this->createUserAndLogin();
+
+        $response = $this->postJson('api/get-current-user', [
+            'mode' => 'simple',
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'id' => $user->id,
+            'name' => 'Test User',
+            'email' => 'test@example.com',
+        ]);
+        $response->assertJsonMissing(['modelType']);
+        $response->assertJsonMissing(['user']);
+    }
+
+    public function test_me_returns_detailed_payload_when_mode_is_detailed(): void
+    {
+        [$user, $token] = $this->createUserAndLogin();
+
+        $response = $this->postJson('api/get-current-user', [
+            'mode' => 'detailed',
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonStructure([
+            'user' => [
+                'id',
+                'name',
+                'email',
+                'createdAt',
+                'updatedAt',
+            ],
+            'modelType',
+        ]);
+        $response->assertJsonPath('user.id', $user->id);
+        $response->assertJsonPath('user.name', 'Test User');
+        $response->assertJsonPath('user.email', 'test@example.com');
+        $response->assertJsonPath('modelType', TestUserMail::class);
+    }
+
+    public function test_me_returns_422_when_mode_is_invalid(): void
+    {
+        [, $token] = $this->createUserAndLogin();
+
+        $response = $this->postJson('api/get-current-user', [
+            'mode' => 'invalid_mode',
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['mode']);
+    }
+
+    public function test_me_returns_401_when_detailed_and_unauthenticated(): void
+    {
+        $response = $this->postJson('api/get-current-user', [
+            'mode' => 'detailed',
+        ]);
+
+        $response->assertStatus(401);
+        $response->assertJson([
+            'errorCode' => 'UNAUTHENTICATED',
+        ]);
+    }
+
+    public function test_me_detailed_mode_works_with_cookie(): void
+    {
+        [$user, $token] = $this->createUserAndLogin(true);
+
+        $response = $this->call('POST', 'api/get-current-user', [
+            'mode' => 'detailed',
+        ], [
+            'nemesis_token' => $token,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('user.id', $user->id);
+        $response->assertJsonPath('modelType', TestUserMail::class);
+    }
+
+    public function test_me_detailed_mode_does_not_leak_extra_fields(): void
+    {
+        [$user, $token] = $this->createUserAndLogin();
+
+        $response = $this->postJson('api/get-current-user', [
+            'mode' => 'detailed',
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonMissingPath('user.password');
+        $response->assertJsonMissingPath('user.remember_token');
     }
 }

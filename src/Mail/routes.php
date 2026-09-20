@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use AndyDefer\Actions\Http\Requests\EmptyRequest;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
@@ -19,6 +18,7 @@ use AndyDefer\AuthenticationKit\Mail\Actions\VerifyTwoFactorOtpAction;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLoginRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailLogoutRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailRegisterRequest;
+use AndyDefer\AuthenticationKit\Mail\Requests\GetCurrentUserRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\ResendEmailVerificationRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\ResetPasswordRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\SendEmailUpdateOtpRequest;
@@ -133,7 +133,7 @@ Route::name('api.')->group(function (): void {
 
     // Get current authenticated user (no middleware, action handles it)
     Route::post('/get-current-user', action_route(
-        EmptyRequest::class,
+        GetCurrentUserRequest::class,
         GetCurrentUserAction::class
     ))->name('get-current-user');
 

@@ -7,6 +7,9 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Mail\Datas\CurrentUserResponseData;
+use AndyDefer\AuthenticationKit\Mail\Enums\CurrentUserMode;
+use AndyDefer\AuthenticationKit\Mail\Records\GetCurrentUserRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\Nemesis\Contracts\Configs\NemesisConfigInterface;
 use AndyDefer\Nemesis\Contracts\MustNemesis;
@@ -26,6 +29,7 @@ final class GetCurrentUserAction extends AbstractAction
 
     protected function handle(AbstractRecord $record): ResponseFactory
     {
+        /** @var GetCurrentUserRecord $record */
         $plainToken = $this->resolvePlainToken();
 
         if ($plainToken === null) {
@@ -62,7 +66,15 @@ final class GetCurrentUserAction extends AbstractAction
             return ErrorCode::USER_FORMAT_ERROR->toJsonResponseFactory();
         }
 
-        return ResponseFactory::json($authenticatable->nemesisFormat(), 200);
+        return ResponseFactory::json(
+            $record->mode === CurrentUserMode::DETAILED
+                ? CurrentUserResponseData::from([
+                    'user' => $authenticatable->nemesisFormat()->toArray(),
+                    'modelType' => $authenticatable::class,
+                ])
+                : $authenticatable->nemesisFormat(),
+            200,
+        );
     }
 
     private function resolvePlainToken(): ?string
