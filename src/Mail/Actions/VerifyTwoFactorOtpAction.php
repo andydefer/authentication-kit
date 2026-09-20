@@ -9,7 +9,6 @@ use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\VerifyTwoFactorOtpAuthRecord;
-use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\Nemesis\Contracts\MustNemesis;
 use AndyDefer\Nemesis\Helpers\NemesisHelper;
@@ -44,7 +43,7 @@ final class VerifyTwoFactorOtpAction extends AbstractAction
 
         try {
             /** @var Model $authenticatable */
-            $service = MailAuthenticationService::for($authenticatable::class);
+            $service = $authenticatable::getMailAuthService();
 
             $valid = $service->verifyTwoFactorOtp(
                 authenticatable: $authenticatable,

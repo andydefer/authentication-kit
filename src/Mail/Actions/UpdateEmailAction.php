@@ -9,7 +9,6 @@ use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\UpdateEmailAuthRecord;
-use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\Nemesis\Contracts\MustNemesis;
 use AndyDefer\Nemesis\Helpers\NemesisHelper;
@@ -44,7 +43,7 @@ final class UpdateEmailAction extends AbstractAction
 
         try {
             /** @var Model $authenticatable */
-            $service = MailAuthenticationService::for($authenticatable::class);
+            $service = $authenticatable::getMailAuthService();
 
             $updated = $service->updateEmail(
                 authenticatable: $authenticatable,

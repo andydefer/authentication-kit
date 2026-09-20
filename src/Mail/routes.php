@@ -111,7 +111,7 @@ Route::name('api.')->group(function (): void {
                 SendEmailUpdateOtpAction::class
             ))->name('send-email-update-otp');
 
-            Route::post('/update-email', action_route(
+            Route::patch('/update-email', action_route(
                 UpdateEmailRequest::class,
                 UpdateEmailAction::class
             ))->name('update-email');

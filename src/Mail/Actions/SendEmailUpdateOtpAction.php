@@ -9,11 +9,9 @@ use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
 use AndyDefer\AuthenticationKit\Mail\Records\SendEmailUpdateOtpAuthRecord;
-use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\Nemesis\Contracts\MustNemesis;
 use AndyDefer\Nemesis\Helpers\NemesisHelper;
-use Illuminate\Database\Eloquent\Model;
 use Throwable;
 
 /**
@@ -43,8 +41,8 @@ final class SendEmailUpdateOtpAction extends AbstractAction
         }
 
         try {
-            /** @var Model $authenticatable */
-            $service = MailAuthenticationService::for($authenticatable::class);
+
+            $service = $authenticatable::getMailAuthService();
 
             $sent = $service->sendEmailUpdateOtp($authenticatable, $record->new_email);
 
