@@ -5,17 +5,23 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Mail\Records;
 
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\DomainStructures\Utils\StrictAssociative;
 
 /**
  * Record for sending an email update OTP.
  *
  * Holds the target model class and the new email address the user
  * wants to migrate to.
+ *
+ * Every request field not mapped to a first-class property is collected
+ * into the `data` bag so the host application can attach contextual
+ * information without extending the record.
  */
 final class SendEmailUpdateOtpAuthRecord extends AbstractRecord
 {
     public function __construct(
         public readonly string $model_type,
         public readonly string $new_email,
+        public readonly ?StrictAssociative $data = null,
     ) {}
 }

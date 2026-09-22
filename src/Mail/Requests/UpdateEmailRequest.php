@@ -5,17 +5,38 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Mail\Requests;
 
 use AndyDefer\Actions\Http\Requests\AbstractRequest;
-use AndyDefer\AuthenticationKit\Mail\Records\UpdateEmailAuthRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\UpdateEmailRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\DomainStructures\Utils\StrictAssociative;
 
 /**
  * Request for confirming an email update.
  *
  * Validates the target model type, the new email plus the OTP code, and
- * builds an UpdateEmailAuthRecord.
+ * builds an UpdateEmailRecord.
+ *
+ * Fields not declared in the validation rules are collected into the `data`
+ * property of the record.
  */
 final class UpdateEmailRequest extends AbstractRequest
 {
+    /**
+     * Fields mapped to first-class record properties and excluded from the
+     * generic `data` bag.
+     *
+     * @var array<int, string>
+     */
+    private const RESERVED_FIELDS = [
+        'model_type',
+        'email',
+        'code',
+    ];
+
+    /**
+     * Return the validation rules for the request.
+     *
+     * @return array<string, array<int, mixed>>
+     */
     public function rules(): array
     {
         return [
@@ -25,6 +46,11 @@ final class UpdateEmailRequest extends AbstractRequest
         ];
     }
 
+    /**
+     * Return custom error messages for the request.
+     *
+     * @return array<string, string>
+     */
     public function messages(): array
     {
         return [
@@ -39,12 +65,38 @@ final class UpdateEmailRequest extends AbstractRequest
         ];
     }
 
+    /**
+     * Build the {@see UpdateEmailAuthRecord} from the request payload.
+     *
+     * @return AbstractRecord The typed record passed to the action.
+     */
     public function getRecord(): AbstractRecord
     {
-        return UpdateEmailAuthRecord::from([
+        return UpdateEmailRecord::from([
             'model_type' => (string) $this->input('model_type'),
             'new_email' => strtolower((string) $this->input('email')),
             'code' => (string) $this->input('code'),
+            'data' => $this->buildDataBag(),
         ]);
+    }
+
+    /**
+     * Collect every request field not reserved by the record into a strict
+     * associative bag.
+     *
+     * @return StrictAssociative|null The extra fields, or null when none are present.
+     */
+    private function buildDataBag(): ?StrictAssociative
+    {
+        $extra = array_diff_key(
+            $this->all(),
+            array_flip(self::RESERVED_FIELDS),
+        );
+
+        if ($extra === []) {
+            return null;
+        }
+
+        return StrictAssociative::from($extra);
     }
 }

@@ -8,7 +8,7 @@ use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Mail\Datas\SuccessResponseData;
-use AndyDefer\AuthenticationKit\Mail\Records\UpdateEmailAuthRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\UpdateEmailRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\Nemesis\Contracts\MustNemesis;
 use AndyDefer\Nemesis\Helpers\NemesisHelper;
@@ -26,7 +26,7 @@ final class UpdateEmailAction extends AbstractAction
 
     protected function handle(AbstractRecord $record): ResponseFactory
     {
-        /** @var UpdateEmailAuthRecord $record */
+        /** @var UpdateEmailRecord $record */
         $authenticatable = $this->helper->getCurrentAuthenticatable();
 
         if ($authenticatable === null) {
