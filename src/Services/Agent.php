@@ -6,19 +6,25 @@ namespace AndyDefer\AuthenticationKit\Services;
 
 use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
 use AndyDefer\AuthenticationKit\Records\AgentPropertiesRecord;
+use AndyDefer\Nemesis\Contracts\Services\AgentServiceInterface;
+use AndyDefer\Nemesis\Services\AgentService;
 use Jenssegers\Agent\Agent as JenssegersAgent;
 
 /**
  * Service for user agent detection.
  *
- * Wraps the Jenssegers\Agent package to provide a clean interface
- * for detecting browser, platform, device type, and other information
- * from the user agent string.
+ * @deprecated 1.0.0 Use {@see AgentService} instead.
+ *                   The agent detection logic has been moved to the Nemesis package.
+ *                   Resolve {@see AgentServiceInterface}
+ *                   from the container. This class is kept for backward compatibility
+ *                   and will be removed in a future major release.
  */
 final class Agent implements AgentInterface
 {
     /**
      * Create a new Agent instance.
+     *
+     * @deprecated 1.0.0 Use {@see AgentService} instead.
      *
      * @param  JenssegersAgent  $agent  The underlying agent instance
      */
@@ -28,6 +34,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::browser()} instead.
      */
     public function browser(): string
     {
@@ -38,6 +46,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::platform()} instead.
      */
     public function platform(): string
     {
@@ -48,6 +58,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::deviceType()} instead.
      */
     public function deviceType(): string
     {
@@ -56,6 +68,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::isMobile()} instead.
      */
     public function isMobile(): bool
     {
@@ -64,6 +78,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::isRobot()} instead.
      */
     public function isRobot(): bool
     {
@@ -72,6 +88,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::isDesktop()} instead.
      */
     public function isDesktop(): bool
     {
@@ -80,6 +98,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::isTablet()} instead.
      */
     public function isTablet(): bool
     {
@@ -88,6 +108,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::version()} instead.
      */
     public function version(): string
     {
@@ -98,6 +120,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::platformVersion()} instead.
      */
     public function platformVersion(): string
     {
@@ -108,6 +132,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::getUserAgent()} instead.
      */
     public function getUserAgent(): string
     {
@@ -116,6 +142,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::setUserAgent()} instead.
      */
     public function setUserAgent(string $userAgent): self
     {
@@ -126,6 +154,8 @@ final class Agent implements AgentInterface
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated 1.0.0 Use {@see AgentService::getProperties()} instead.
      */
     public function getProperties(): AgentPropertiesRecord
     {

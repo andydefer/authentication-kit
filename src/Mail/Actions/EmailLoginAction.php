@@ -7,7 +7,6 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
-use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
@@ -18,6 +17,7 @@ use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\DataObject;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
+use AndyDefer\Nemesis\Contracts\Services\AgentServiceInterface;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
@@ -47,7 +47,7 @@ final class EmailLoginAction extends AbstractAction
     public function __construct(
         private readonly NemesisInterface $nemesis,
         private readonly LogRepositoryInterface $logRepository,
-        private readonly AgentInterface $agent,
+        private readonly AgentServiceInterface $agent,
         private readonly AuthenticationKitConfigInterface $config,
     ) {}
 

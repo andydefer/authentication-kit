@@ -9,7 +9,6 @@ namespace AndyDefer\AuthenticationKit\Mail\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
-use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Enums\ErrorType;
 use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
@@ -19,6 +18,7 @@ use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Utils\DataObject;
 use AndyDefer\DomainStructures\Utils\EmptyRecord;
+use AndyDefer\Nemesis\Contracts\Services\AgentServiceInterface;
 use Exception;
 use Illuminate\Validation\ValidationException;
 
@@ -43,7 +43,7 @@ final class EmailRegisterAction extends AbstractAction
 
     public function __construct(
         private readonly LogRepositoryInterface $logRepository,
-        private readonly AgentInterface $agent,
+        private readonly AgentServiceInterface $agent,
         private readonly AuthenticationKitConfigInterface $config,
     ) {}
 

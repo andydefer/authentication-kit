@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Mail;
 
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
-use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLoginAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailLogoutAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
@@ -17,6 +16,7 @@ use AndyDefer\AuthenticationKit\Mail\Actions\VerifyEmailAction;
 use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterface;
 use AndyDefer\AuthenticationKit\Mail\Http\Middleware\ValidateMailAuthenticatableMiddleware;
 use AndyDefer\AuthenticationKit\Mail\Repositories\LogRepository;
+use AndyDefer\Nemesis\Contracts\Services\AgentServiceInterface;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
@@ -37,7 +37,7 @@ final class MailServiceProvider extends ServiceProvider
             concrete: function ($app): EmailRegisterAction {
                 return new EmailRegisterAction(
                     logRepository: $app->make(LogRepositoryInterface::class),
-                    agent: $app->make(AgentInterface::class),
+                    agent: $app->make(AgentServiceInterface::class),
                     config: $app->make(AuthenticationKitConfigInterface::class),
                 );
             }
@@ -50,7 +50,7 @@ final class MailServiceProvider extends ServiceProvider
                 return new EmailLoginAction(
                     nemesis: $app->make(NemesisInterface::class),
                     logRepository: $app->make(LogRepositoryInterface::class),
-                    agent: $app->make(AgentInterface::class),
+                    agent: $app->make(AgentServiceInterface::class),
                     config: $app->make(AuthenticationKitConfigInterface::class),
                 );
             }
