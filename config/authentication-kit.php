@@ -67,4 +67,16 @@ return [
     |
     */
     'store_token_in_cookie' => env('AUTH_KIT_STORE_TOKEN_IN_COOKIE', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Cookie Duration
+    |--------------------------------------------------------------------------
+    |
+    | Lifetime of the authentication cookie, expressed in minutes.
+    | The default value (525600) corresponds to one year. When "remember me"
+    | is not requested, a shorter duration may be used by the application.
+    |
+    */
+    'cookie_duration' => env('AUTH_KIT_COOKIE_DURATION', 525600),
 ];

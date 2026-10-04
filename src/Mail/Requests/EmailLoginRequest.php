@@ -17,6 +17,7 @@ final class EmailLoginRequest extends AbstractRequest
         return [
             'model_type' => ['required', 'string', new ValidModelTypeRule],
             'email' => ['nullable'],
+            'remember_me' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -24,7 +25,8 @@ final class EmailLoginRequest extends AbstractRequest
     {
         return new EmailLoginAuthRecord(
             model_type: $this->input('model_type'),
-            data: StrictDataObject::from($this->except('model_type')),
+            data: StrictDataObject::from($this->except(['model_type', 'remember_me'])),
+            remember_me: $this->input('remember_me', false),
             ip: $this->ip(),
             user_agent: $this->userAgent(),
         );

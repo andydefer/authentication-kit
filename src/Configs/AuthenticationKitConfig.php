@@ -27,6 +27,8 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
 
     private const DEFAULT_STORE_TOKEN_IN_COOKIE = true;
 
+    private const DEFAULT_COOKIE_DURATION = 525600;
+
     public function __construct(
         private readonly ConfigRepository $config,
     ) {}
@@ -94,6 +96,17 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
         return (bool) $this->config->get(
             'authentication-kit.store_token_in_cookie',
             self::DEFAULT_STORE_TOKEN_IN_COOKIE
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getCookieDuration(): int
+    {
+        return (int) $this->config->get(
+            'authentication-kit.cookie_duration',
+            self::DEFAULT_COOKIE_DURATION
         );
     }
 }

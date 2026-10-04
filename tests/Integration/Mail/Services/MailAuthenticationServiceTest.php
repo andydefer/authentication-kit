@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Integration\Mail\Services;
 
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
@@ -16,9 +17,11 @@ use AndyDefer\LaravelOtp\Models\Otp;
 use AndyDefer\LaravelOtp\Services\OtpService;
 use AndyDefer\LaravelOtp\ValueObjects\PurposeVO;
 use AndyDefer\Nemesis\Models\NemesisToken;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Cookie;
 
 final class MailAuthenticationServiceTest extends IntegrationTestCase
 {
@@ -83,6 +86,20 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
         );
 
         return $this->otpService->create($user, $purposeVO);
+    }
+
+    /**
+     * Retrieve a cookie queued during the current test request.
+     */
+    private function getQueuedCookie(string $name): ?Cookie
+    {
+        foreach (app('cookie')->getQueuedCookies() as $cookie) {
+            if ($cookie->getName() === $name) {
+                return $cookie;
+            }
+        }
+
+        return null;
     }
 
     public function test_for_returns_instance_for_valid_model(): void
@@ -833,6 +850,124 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
             $otp->code,
         );
         $this->assertFalse($second);
+    }
+
+    // ========================================================================
+    // REMEMBER ME — REGISTRATION
+    // ========================================================================
+
+    public function test_register_stores_token_cookie_with_full_duration_when_remember_me_is_true(): void
+    {
+        // Arrange: registration record with remember_me enabled and cookie storage on
+        config()->set('authentication-kit.store_token_in_cookie', true);
+        config()->set('authentication-kit.cookie_duration', 525600);
+
+        $record = new EmailRegisterAuthRecord(
+            model_type: TestUserMail::class,
+            data: new StrictDataObject([
+                'name' => 'Test User',
+                'email' => self::TEST_EMAIL,
+                'password' => self::TEST_PASSWORD,
+                'password_confirmation' => self::TEST_PASSWORD,
+            ]),
+            with_token: true,
+            remember_me: true,
+        );
+
+        // Act
+        $this->service->register($record);
+
+        // Assert: the queued cookie expires in approximately one year
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
+
+        $expectedExpiration = now()->addMinutes(525600)->getTimestamp();
+        $this->assertEqualsWithDelta($expectedExpiration, $queued->getExpiresTime(), 5);
+    }
+
+    public function test_register_stores_session_cookie_when_remember_me_is_false(): void
+    {
+        // Arrange: registration record without remember_me and cookie storage on
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $record = new EmailRegisterAuthRecord(
+            model_type: TestUserMail::class,
+            data: new StrictDataObject([
+                'name' => 'Test User',
+                'email' => self::TEST_EMAIL,
+                'password' => self::TEST_PASSWORD,
+                'password_confirmation' => self::TEST_PASSWORD,
+            ]),
+            with_token: true,
+            remember_me: false,
+        );
+
+        // Act
+        $this->service->register($record);
+
+        // Assert: the queued cookie is a session cookie (expires with the browser)
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
+        $this->assertSame(0, $queued->getExpiresTime());
+    }
+
+    // ========================================================================
+    // REMEMBER ME — LOGIN
+    // ========================================================================
+
+    public function test_login_stores_token_cookie_with_full_duration_when_remember_me_is_true(): void
+    {
+        // Arrange: existing user, cookie storage on, remember_me enabled
+        $this->createTestUser();
+        config()->set('authentication-kit.store_token_in_cookie', true);
+        config()->set('authentication-kit.cookie_duration', 525600);
+
+        // Act
+        $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD, rememberMe: true);
+
+        // Assert: the login succeeded and the queued cookie expires in approximately one year
+        $this->assertNotNull($result);
+
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
+
+        $expectedExpiration = now()->addMinutes(525600)->getTimestamp();
+        $this->assertEqualsWithDelta($expectedExpiration, $queued->getExpiresTime(), 5);
+    }
+
+    public function test_login_stores_session_cookie_when_remember_me_is_false(): void
+    {
+        // Arrange: existing user, cookie storage on, remember_me disabled
+        $this->createTestUser();
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        // Act
+        $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        // Assert: the login succeeded and the queued cookie is a session cookie
+        $this->assertNotNull($result);
+
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
+        $this->assertSame(0, $queued->getExpiresTime());
+    }
+
+    public function test_login_does_not_queue_cookie_when_store_token_in_cookie_is_disabled(): void
+    {
+        // Arrange: cookie storage explicitly disabled and config rebound
+        $this->createTestUser();
+
+        $configRepository = app(Repository::class);
+        $configRepository->set('authentication-kit.store_token_in_cookie', false);
+
+        $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
+
+        // Act
+        $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD, rememberMe: true);
+
+        // Assert
+        $this->assertNotNull($result);
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
     }
 
     // ========================================================================

@@ -8,7 +8,7 @@ namespace AndyDefer\AuthenticationKit\Contracts\Configs;
  * Interface for authentication kit configuration.
  *
  * Provides methods to retrieve authentication configuration values
- * such as rate limits and cookie storage behavior.
+ * such as rate limits, cookie storage behavior, and cookie duration.
  */
 interface AuthenticationKitConfigInterface
 {
@@ -53,4 +53,11 @@ interface AuthenticationKitConfigInterface
      * @return bool True if tokens should be stored in cookies, false otherwise
      */
     public function shouldStoreTokenInCookie(): bool;
+
+    /**
+     * Get the authentication cookie duration in minutes.
+     *
+     * @return int The cookie lifetime in minutes
+     */
+    public function getCookieDuration(): int;
 }

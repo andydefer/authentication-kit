@@ -27,6 +27,7 @@ use AndyDefer\LaravelOtp\ValueObjects\PurposeVO;
 use AndyDefer\Nemesis\Contracts\Services\CookieTokenStorageInterface;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
+use AndyDefer\Nemesis\Services\CookieTokenStorageService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -139,7 +140,12 @@ class MailAuthenticationService implements MailAuthenticationInterface
             [$token, $plainToken] = $this->nemesis->createWithPlainToken($tokenRecord, $user);
 
             if ($this->config->shouldStoreTokenInCookie()) {
-                $this->cookieStorage->store($plainToken);
+                $this->cookieStorage->store(
+                    $plainToken,
+                    $record->remember_me ? $this->config->getCookieDuration() : 0,
+                );
+                CookieTokenStorageService::class;
+
             }
         }
 
@@ -161,7 +167,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
     /**
      * {@inheritDoc}
      */
-    public function login(string $email, string $password): ?LoginResultRecord
+    public function login(string $email, string $password, bool $rememberMe = false): ?LoginResultRecord
     {
         $this->beforeLogin($email, $password);
 
@@ -210,7 +216,10 @@ class MailAuthenticationService implements MailAuthenticationInterface
         [$token, $plainToken] = $this->nemesis->createWithPlainToken($record, $user);
 
         if ($this->config->shouldStoreTokenInCookie()) {
-            $this->cookieStorage->store($plainToken);
+            $this->cookieStorage->store(
+                $plainToken,
+                $rememberMe ? $this->config->getCookieDuration() : 0,
+            );
         }
 
         $this->afterLogin($user);

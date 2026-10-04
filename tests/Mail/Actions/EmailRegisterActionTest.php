@@ -11,6 +11,7 @@ use AndyDefer\AuthenticationKit\Mail\Requests\EmailRegisterRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
 use Illuminate\Testing\TestResponse;
+use Symfony\Component\HttpFoundation\Cookie;
 
 final class EmailRegisterActionTest extends IntegrationTestCase
 {
@@ -24,6 +25,7 @@ final class EmailRegisterActionTest extends IntegrationTestCase
             'password_reset_rate_limit' => 3,
             'email_verification_rate_limit' => 5,
             'store_token_in_cookie' => false,
+            'cookie_duration' => 525600,
         ]);
 
         $this->app['config']->set('nemesis.web', [
@@ -70,6 +72,17 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         foreach ($cookies as $cookie) {
             if ($cookie->getName() === $cookieName) {
                 return $cookie->getValue();
+            }
+        }
+
+        return null;
+    }
+
+    private function getCookieObject(TestResponse $response, string $cookieName): ?Cookie
+    {
+        foreach ($response->headers->getCookies() as $cookie) {
+            if ($cookie->getName() === $cookieName) {
+                return $cookie;
             }
         }
 
@@ -481,6 +494,212 @@ final class EmailRegisterActionTest extends IntegrationTestCase
         $protectedResponse->assertJson(['message' => 'Protected content']);
 
         $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    // ============================================================================
+    // Tests remember me
+    // ============================================================================
+
+    public function test_register_with_remember_me_true_stores_persistent_cookie(): void
+    {
+        // Arrange: cookie storage on, with_token and remember_me both enabled
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('authentication-kit.cookie_duration', 525600);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'remember_me' => true,
+            'name' => 'Remember Register',
+            'email' => 'rememberregister@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-register', $payload);
+
+        // Assert: the cookie is issued with an expiration matching the configured duration
+        $response->assertStatus(201);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+
+        $expectedExpiration = now()->addMinutes(525600)->getTimestamp();
+        $this->assertEqualsWithDelta($expectedExpiration, $cookie->getExpiresTime(), 5);
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_register_with_remember_me_false_stores_session_cookie(): void
+    {
+        // Arrange: cookie storage on, with_token enabled, remember_me disabled
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'remember_me' => false,
+            'name' => 'No Remember Register',
+            'email' => 'norememberregister@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-register', $payload);
+
+        // Assert: the cookie is a session cookie (no expiration)
+        $response->assertStatus(201);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+        $this->assertSame(0, $cookie->getExpiresTime());
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_register_without_remember_me_stores_session_cookie_by_default(): void
+    {
+        // Arrange: cookie storage on, remember_me omitted from the request
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'name' => 'Default Register',
+            'email' => 'defaultregister@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-register', $payload);
+
+        // Assert: default behavior produces a session cookie
+        $response->assertStatus(201);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+        $this->assertSame(0, $cookie->getExpiresTime());
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_register_with_remember_me_does_not_store_cookie_when_disabled(): void
+    {
+        // Arrange: cookie storage explicitly off, remember_me requested
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'remember_me' => true,
+            'name' => 'No Cookie Remember Register',
+            'email' => 'nocookierememberregister@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-register', $payload);
+
+        // Assert: registration succeeds but no cookie is emitted
+        $response->assertStatus(201);
+        $this->assertNull($this->getCookieValue($response, 'nemesis_token'));
+    }
+
+    public function test_register_with_remember_me_but_no_token_does_not_store_cookie(): void
+    {
+        // Arrange: cookie storage on, remember_me true, but with_token false
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => false,
+            'remember_me' => true,
+            'name' => 'No Token Remember Register',
+            'email' => 'notokenrememberregister@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-register', $payload);
+
+        // Assert: no token issued, so no cookie should be emitted
+        $response->assertStatus(201);
+        $this->assertNull($this->getCookieValue($response, 'nemesis_token'));
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_register_rejects_non_boolean_remember_me(): void
+    {
+        // Arrange: remember_me provided with an invalid type
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'remember_me' => 'yes-please',
+            'name' => 'Invalid Remember Register',
+            'email' => 'invalidrememberregister@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-register', $payload);
+
+        // Assert: validation rejects the payload
+        $response->assertStatus(422);
+    }
+
+    public function test_register_uses_configured_cookie_duration_for_remember_me(): void
+    {
+        // Arrange: custom cookie duration applied when remember_me is true
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('authentication-kit.cookie_duration', 1440);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'with_token' => true,
+            'remember_me' => true,
+            'name' => 'Custom Duration Register',
+            'email' => 'customdurationregister@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-register', $payload);
+
+        // Assert: expiration matches the custom 1440 minutes (one day)
+        $response->assertStatus(201);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+
+        $expectedExpiration = now()->addMinutes(1440)->getTimestamp();
+        $this->assertEqualsWithDelta($expectedExpiration, $cookie->getExpiresTime(), 5);
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->app['config']->set('authentication-kit.cookie_duration', 525600);
         $this->refreshConfigService();
     }
 }

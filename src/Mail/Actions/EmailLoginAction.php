@@ -97,7 +97,7 @@ final class EmailLoginAction extends AbstractAction
             $service = $modelClass::getMailAuthService();
 
             /** @var LoginResultRecord|null $loginResult */
-            $loginResult = $service->login($email, $password);
+            $loginResult = $service->login($email, $password, $record->remember_me);
 
             if ($loginResult === null) {
                 $this->success = false;

@@ -10,8 +10,8 @@ use AndyDefer\DomainStructures\Utils\StrictDataObject;
 /**
  * Record for email registration request.
  *
- * Contains the model type, token flag, registration data, and optional
- * IP address and user agent for device tracking.
+ * Contains the model type, token flag, registration data, remember-me flag,
+ * and optional IP address and user agent for device tracking.
  */
 final class EmailRegisterAuthRecord extends AbstractRecord
 {
@@ -19,6 +19,7 @@ final class EmailRegisterAuthRecord extends AbstractRecord
         public readonly string $model_type,
         public readonly bool $with_token,
         public readonly StrictDataObject $data,
+        public readonly bool $remember_me = false,
         public readonly ?string $ip = null,
         public readonly ?string $user_agent = null,
     ) {}

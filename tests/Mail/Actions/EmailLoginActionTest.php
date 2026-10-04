@@ -11,6 +11,7 @@ use AndyDefer\AuthenticationKit\Mail\Requests\EmailLoginRequest;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
 use Illuminate\Testing\TestResponse;
+use Symfony\Component\HttpFoundation\Cookie;
 
 final class EmailLoginActionTest extends IntegrationTestCase
 {
@@ -420,5 +421,212 @@ final class EmailLoginActionTest extends IntegrationTestCase
 
         $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
         $this->refreshConfigService();
+    }
+
+    // ============================================================================
+    // Tests remember me
+    // ============================================================================
+
+    public function test_login_with_remember_me_true_stores_persistent_cookie(): void
+    {
+        // Arrange: cookie storage on, remember_me explicitly requested
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('authentication-kit.cookie_duration', 525600);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        TestUserMail::create([
+            'name' => 'Remember User',
+            'email' => 'remember@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'remember@example.com',
+            'password' => 'Password123!',
+            'remember_me' => true,
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-login', $payload);
+
+        // Assert: the cookie is issued with an expiration matching the configured duration
+        $response->assertStatus(200);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+
+        $expectedExpiration = now()->addMinutes(525600)->getTimestamp();
+        $this->assertEqualsWithDelta($expectedExpiration, $cookie->getExpiresTime(), 5);
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_login_with_remember_me_false_stores_session_cookie(): void
+    {
+        // Arrange: cookie storage on, remember_me explicitly disabled
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        TestUserMail::create([
+            'name' => 'No Remember User',
+            'email' => 'noremember@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'noremember@example.com',
+            'password' => 'Password123!',
+            'remember_me' => false,
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-login', $payload);
+
+        // Assert: the cookie is a session cookie (no expiration)
+        $response->assertStatus(200);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+        $this->assertSame(0, $cookie->getExpiresTime());
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_login_without_remember_me_stores_session_cookie_by_default(): void
+    {
+        // Arrange: cookie storage on, remember_me omitted from the request
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        TestUserMail::create([
+            'name' => 'Default User',
+            'email' => 'default@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'default@example.com',
+            'password' => 'Password123!',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-login', $payload);
+
+        // Assert: default behavior produces a session cookie
+        $response->assertStatus(200);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+        $this->assertSame(0, $cookie->getExpiresTime());
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+    }
+
+    public function test_login_with_remember_me_does_not_store_cookie_when_disabled(): void
+    {
+        // Arrange: cookie storage explicitly off, remember_me requested
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->refreshConfigService();
+
+        TestUserMail::create([
+            'name' => 'No Cookie User',
+            'email' => 'nocookie-remember@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'nocookie-remember@example.com',
+            'password' => 'Password123!',
+            'remember_me' => true,
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-login', $payload);
+
+        // Assert: login succeeds but no cookie is emitted
+        $response->assertStatus(200);
+        $this->assertNull($this->getCookieValue($response, 'nemesis_token'));
+    }
+
+    public function test_login_rejects_non_boolean_remember_me(): void
+    {
+        // Arrange: remember_me provided with an invalid type
+        TestUserMail::create([
+            'name' => 'Invalid Remember User',
+            'email' => 'invalid-remember@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'invalid-remember@example.com',
+            'password' => 'Password123!',
+            'remember_me' => 'yes-please',
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-login', $payload);
+
+        // Assert: validation rejects the payload
+        $response->assertStatus(422);
+    }
+
+    public function test_login_uses_configured_cookie_duration_for_remember_me(): void
+    {
+        // Arrange: custom cookie duration applied when remember_me is true
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+        $this->app['config']->set('authentication-kit.cookie_duration', 1440);
+        $this->app['config']->set('nemesis.web.cookie_name', 'nemesis_token');
+        $this->refreshConfigService();
+
+        TestUserMail::create([
+            'name' => 'Custom Duration User',
+            'email' => 'custom-duration@example.com',
+            'password' => bcrypt('Password123!'),
+        ]);
+
+        $payload = [
+            'model_type' => TestUserMail::class,
+            'email' => 'custom-duration@example.com',
+            'password' => 'Password123!',
+            'remember_me' => true,
+        ];
+
+        // Act
+        $response = $this->postJson('/api/email-login', $payload);
+
+        // Assert: expiration matches the custom 1440 minutes (one day)
+        $response->assertStatus(200);
+
+        $cookie = $this->getCookieObject($response, 'nemesis_token');
+        $this->assertNotNull($cookie);
+
+        $expectedExpiration = now()->addMinutes(1440)->getTimestamp();
+        $this->assertEqualsWithDelta($expectedExpiration, $cookie->getExpiresTime(), 5);
+
+        $this->app['config']->set('authentication-kit.store_token_in_cookie', false);
+        $this->app['config']->set('authentication-kit.cookie_duration', 525600);
+        $this->refreshConfigService();
+    }
+
+    private function getCookieObject(TestResponse $response, string $cookieName): ?Cookie
+    {
+        foreach ($response->headers->getCookies() as $cookie) {
+            if ($cookie->getName() === $cookieName) {
+                return $cookie;
+            }
+        }
+
+        return null;
     }
 }

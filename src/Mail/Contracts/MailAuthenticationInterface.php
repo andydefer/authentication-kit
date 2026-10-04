@@ -30,8 +30,13 @@ interface MailAuthenticationInterface
 
     /**
      * Authenticates a user with email and password.
+     *
+     * @param  string  $email  The user's email address
+     * @param  string  $password  The user's password
+     * @param  bool  $rememberMe  Whether to issue a persistent cookie (default: false)
+     * @return LoginResultRecord|null The login result or null on failure
      */
-    public function login(string $email, string $password): ?LoginResultRecord;
+    public function login(string $email, string $password, bool $rememberMe = false): ?LoginResultRecord;
 
     /**
      * Logs out a user by revoking their current token.
