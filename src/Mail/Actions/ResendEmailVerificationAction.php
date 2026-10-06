@@ -116,13 +116,18 @@ final class ResendEmailVerificationAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ErrorCode::VALIDATION_ERROR->toJsonResponseFactory(errors: $e->errors());
+            return ErrorCode::VALIDATION_ERROR->toJsonResponseFactory(
+                message: $e->getMessage(),
+                errors: $e->errors()
+            );
         } catch (Exception $e) {
             $this->success = false;
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VERIFICATION_OTP_SEND_FAILED;
 
-            return ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->toJsonResponseFactory();
+            return ErrorCode::VERIFICATION_EMAIL_RESEND_ERROR->toJsonResponseFactory(
+                message: $e->getMessage()
+            );
         }
     }
 

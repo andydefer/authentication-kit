@@ -101,12 +101,17 @@ final class EmailRegisterAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ErrorCode::VALIDATION_ERROR->toJsonResponseFactory(errors: $e->errors());
+            return ErrorCode::VALIDATION_ERROR->toJsonResponseFactory(
+                errors: $e->errors(),
+                message: $e->getMessage()
+            );
         } catch (Exception $e) {
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ErrorCode::REGISTRATION_ERROR->toJsonResponseFactory();
+            return ErrorCode::REGISTRATION_ERROR->toJsonResponseFactory(
+                message: $e->getMessage(),
+            );
         }
     }
 

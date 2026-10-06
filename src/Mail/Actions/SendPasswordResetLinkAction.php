@@ -95,7 +95,9 @@ final class SendPasswordResetLinkAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::RATE_LIMIT_EXCEEDED;
 
-            return ErrorCode::RESET_LINK_ERROR->toJsonResponseFactory();
+            return ErrorCode::RESET_LINK_ERROR->toJsonResponseFactory(
+                message: $e->getMessage(),
+            );
         }
     }
 

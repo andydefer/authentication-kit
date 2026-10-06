@@ -124,7 +124,9 @@ final class ResetPasswordAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ErrorCode::RESET_PASSWORD_ERROR->toJsonResponseFactory();
+            return ErrorCode::RESET_PASSWORD_ERROR->toJsonResponseFactory(
+                message: $e->getMessage()
+            );
         }
     }
 

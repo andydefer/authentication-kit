@@ -138,7 +138,9 @@ final class VerifyEmailAction extends AbstractAction
             $this->errorMessage = $e->getMessage();
             $this->errorType = ErrorType::VALIDATION_ERROR;
 
-            return ErrorCode::VERIFY_EMAIL_ERROR->toJsonResponseFactory();
+            return ErrorCode::VERIFY_EMAIL_ERROR->toJsonResponseFactory(
+                message: $e->getMessage(),
+            );
         }
     }
 
