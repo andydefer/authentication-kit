@@ -8,6 +8,7 @@ use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\GetCurrentUserAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\ResendEmailVerificationAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\ResetPasswordAction;
+use AndyDefer\AuthenticationKit\Mail\Actions\RestoreCookieAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendEmailUpdateOtpAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendEmailVerificationAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendPasswordResetLinkAction;
@@ -21,6 +22,7 @@ use AndyDefer\AuthenticationKit\Mail\Requests\EmailRegisterRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\GetCurrentUserRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\ResendEmailVerificationRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\ResetPasswordRequest;
+use AndyDefer\AuthenticationKit\Mail\Requests\RestoreCookieRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\SendEmailUpdateOtpRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\SendEmailVerificationRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\SendPasswordResetLinkRequest;
@@ -35,8 +37,8 @@ use Illuminate\Support\Facades\Route;
  *
  * This route file defines all public and protected endpoints for
  * email-based authentication flows including registration, login,
- * email verification, email update, password reset, and two-factor
- * authentication.
+ * email verification, email update, password reset, two-factor
+ * authentication, and authentication cookie restoration.
  *
  * @package AndyDefer\AuthenticationKit\Mail
  */
@@ -79,6 +81,18 @@ Route::name('api.')->group(function (): void {
             VerifyEmailRequest::class,
             VerifyEmailAction::class
         ))->name('verify-email');
+
+        // Restore the auth cookie from a plain token still held by the client
+        //
+        // This endpoint is intentionally public: the client is authenticated
+        // via the plain token it still holds in its own storage (typically
+        // localStorage or native storage). The token is hashed server-side
+        // and looked up against the stored tokens before the cookie is
+        // rewritten. No new token is issued.
+        Route::post('/restore-cookie', action_route(
+            RestoreCookieRequest::class,
+            RestoreCookieAction::class
+        ))->name('restore-cookie');
 
         /*
          * Protected Authentication Routes

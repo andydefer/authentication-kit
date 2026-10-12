@@ -13,6 +13,7 @@ use AndyDefer\AuthenticationKit\Mail\Contracts\Repositories\LogRepositoryInterfa
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\NotificationMessageRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\RestoreCookieAuthRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Interfaces\Transformable;
 use AndyDefer\DomainStructures\Utils\StrictDataObject;
@@ -24,10 +25,10 @@ use AndyDefer\LaravelNotification\ValueObjects\MessageSubjectVO;
 use AndyDefer\LaravelNotification\ValueObjects\NotificationMessageVO;
 use AndyDefer\LaravelOtp\Services\OtpService;
 use AndyDefer\LaravelOtp\ValueObjects\PurposeVO;
+use AndyDefer\Nemesis\Contracts\Configs\NemesisConfigInterface;
 use AndyDefer\Nemesis\Contracts\Services\CookieTokenStorageInterface;
 use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\Nemesis\Records\NemesisTokenRecord;
-use AndyDefer\Nemesis\Services\CookieTokenStorageService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -60,6 +61,7 @@ class MailAuthenticationService implements MailAuthenticationInterface
         private readonly LogRepositoryInterface $logRepository,
         private readonly AuthenticationKitConfigInterface $config,
         private readonly CookieTokenStorageInterface $cookieStorage,
+        private readonly NemesisConfigInterface $nemesisConfig,
     ) {
         if (! class_exists($modelClass)) {
             throw new \InvalidArgumentException("Model class {$modelClass} does not exist");
@@ -87,8 +89,17 @@ class MailAuthenticationService implements MailAuthenticationInterface
         $logRepository = app(LogRepositoryInterface::class);
         $config = app(AuthenticationKitConfigInterface::class);
         $cookieStorage = app(CookieTokenStorageInterface::class);
+        $nemesisConfig = app(NemesisConfigInterface::class);
 
-        return new static($modelClass, $nemesis, $otpService, $logRepository, $config, $cookieStorage);
+        return new static(
+            $modelClass,
+            $nemesis,
+            $otpService,
+            $logRepository,
+            $config,
+            $cookieStorage,
+            $nemesisConfig,
+        );
     }
 
     // ========================================================================
@@ -144,8 +155,6 @@ class MailAuthenticationService implements MailAuthenticationInterface
                     $plainToken,
                     $record->remember_me ? $this->config->getCookieDuration() : 0,
                 );
-                CookieTokenStorageService::class;
-
             }
         }
 
@@ -274,6 +283,69 @@ class MailAuthenticationService implements MailAuthenticationInterface
         }
 
         return $result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function restoreCookie(RestoreCookieAuthRecord $record): ?Model
+    {
+        $this->beforeRestoreCookie($record);
+
+        if (! $this->config->shouldStoreTokenInCookie()) {
+            $this->afterRestoreCookie($record, null);
+
+            return null;
+        }
+
+        $hash = hash(
+            $this->nemesisConfig->tokenConfig()->hash_algorithm,
+            $record->token,
+        );
+
+        $token = $this->nemesis->findByHash($hash);
+
+        if ($token === null) {
+            $this->afterRestoreCookie($record, null);
+
+            return null;
+        }
+
+        if ($token->tokenable_type !== $this->modelClass) {
+            $this->afterRestoreCookie($record, null);
+
+            return null;
+        }
+
+        if ($token->trashed()) {
+            $this->afterRestoreCookie($record, null);
+
+            return null;
+        }
+
+        if ($token->expires_at !== null && $token->expires_at->isPast()) {
+            $this->afterRestoreCookie($record, null);
+
+            return null;
+        }
+
+        /** @var Model&MailAuthenticatable|null $auth */
+        $auth = $this->modelClass::find($token->tokenable_id);
+
+        if ($auth === null) {
+            $this->afterRestoreCookie($record, null);
+
+            return null;
+        }
+
+        $this->cookieStorage->store(
+            $record->token,
+            $record->remember_me ? $this->config->getCookieDuration() : 0,
+        );
+
+        $this->afterRestoreCookie($record, $auth);
+
+        return $auth;
     }
 
     /**
@@ -736,6 +808,27 @@ class MailAuthenticationService implements MailAuthenticationInterface
      * Hook called after successful logout.
      */
     protected function afterLogout(Authenticatable&Model $authenticatable): void {}
+
+    /**
+     * Hook called before restoring the authentication cookie.
+     */
+    protected function beforeRestoreCookie(RestoreCookieAuthRecord $record): void {}
+
+    /**
+     * Hook called after attempting to restore the authentication cookie.
+     *
+     * The `$auth` parameter carries the concrete value of the type
+     * intersection `Model&Authenticatable` when restoration succeeded, or
+     * `null` on failure. PHP does not allow the intersection and the nullable
+     * marker to be combined in a single declaration, hence the `?Model`
+     * signature here; the intersection is enforced by the service constructor
+     * (`$modelClass` must be a subclass of `MailAuthenticatable`) and by the
+     * fact that the model returned from `find()` always implements both.
+     *
+     * @param  (Model&Authenticatable)|null  $auth  The authenticatable when restoration
+     *                                              succeeded, null otherwise.
+     */
+    protected function afterRestoreCookie(RestoreCookieAuthRecord $record, ?Model $auth): void {}
 
     /**
      * Hook called before sending password reset OTP.

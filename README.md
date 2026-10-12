@@ -17,6 +17,7 @@
 13. [Sécurité](#sécurité)
 14. [Migration de versions](#migration-de-versions)
 15. [Structure du package](#structure-du-package)
+16. [Restauration de cookie](#restauration-de-cookie)
 
 ---
 
@@ -44,6 +45,7 @@ Vous pouvez l'utiliser avec **n'importe quel modèle Eloquent** (User, Shop, Che
 | Pas d'endpoint utilisateur courant | ✅ Route `/me` intégrée |
 | Pas de changement d'email sécurisé | ✅ Flux OTP sur nouvelle adresse |
 | Pas d'action sensible protégée | ✅ Double authentification (2FA) |
+| Cookie perdu par le navigateur | ✅ Endpoint `/restore-cookie` |
 
 ---
 
@@ -424,6 +426,7 @@ use AndyDefer\AuthenticationKit\Mail\Actions\EmailRegisterAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\GetCurrentUserAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\ResendEmailVerificationAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\ResetPasswordAction;
+use AndyDefer\AuthenticationKit\Mail\Actions\RestoreCookieAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendEmailUpdateOtpAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendEmailVerificationAction;
 use AndyDefer\AuthenticationKit\Mail\Actions\SendPasswordResetLinkAction;
@@ -436,6 +439,7 @@ use AndyDefer\AuthenticationKit\Mail\Requests\EmailLogoutRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\EmailRegisterRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\ResendEmailVerificationRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\ResetPasswordRequest;
+use AndyDefer\AuthenticationKit\Mail\Requests\RestoreCookieRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\SendEmailUpdateOtpRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\SendEmailVerificationRequest;
 use AndyDefer\AuthenticationKit\Mail\Requests\SendPasswordResetLinkRequest;
@@ -479,6 +483,12 @@ Route::middleware(['validate.mail.authenticatable'])->group(function (): void {
         VerifyEmailRequest::class,
         VerifyEmailAction::class
     ))->name('verification.verify');
+
+    // Restauration de cookie à partir d'un plain token encore valide
+    Route::post('/restore-cookie', action_route(
+        RestoreCookieRequest::class,
+        RestoreCookieAction::class
+    ))->name('restore-cookie');
 
     /*
      * Routes protégées - Nécessitent un token d'authentification
@@ -555,6 +565,7 @@ Route::post('/me', action_route(
 | `/update-email` | POST | ✅ | ❌ | Confirmation changement d'email |
 | `/send-two-factor-otp` | POST | ✅ | ❌ | Envoi OTP double authentification |
 | `/verify-two-factor-otp` | POST | ✅ | ❌ | Vérification OTP double authentification |
+| `/restore-cookie` | POST | ❌ | ✅ (écrit cookie) | Restaure un cookie perdu à partir du plain token |
 
 ---
 
@@ -577,6 +588,7 @@ Le package supporte le stockage automatique des tokens d'authentification dans l
 | **Inscription avec token** | Le cookie est défini si `with_token = true` |
 | **Déconnexion** | Le cookie est automatiquement supprimé |
 | **Requête `/me`** | Le token est lu depuis le cookie si pas de Bearer token |
+| **Restauration de cookie** | Le cookie est réémis à partir d'un plain token encore valide |
 
 ### Priorité d'authentification
 
@@ -614,6 +626,7 @@ Le package supporte le stockage automatique des tokens d'authentification dans l
 |-------|------|--------|-------------|
 | `model_type` | `string` | ✅ Oui | FQCN du modèle |
 | `with_token` | `boolean` | ❌ Non | Générer un token (défaut: false) |
+| `remember_me` | `boolean` | ❌ Non | Cookie persistant (défaut: false) |
 | `*` | `mixed` | ❌ Non | Tous les autres champs sont passés au modèle |
 
 **Requête :**
@@ -621,6 +634,7 @@ Le package supporte le stockage automatique des tokens d'authentification dans l
 {
     "model_type": "App\\Models\\User",
     "with_token": true,
+    "remember_me": true,
     "name": "John Doe",
     "email": "john@example.com",
     "password": "Password123!",
@@ -665,13 +679,15 @@ Le package supporte le stockage automatique des tokens d'authentification dans l
 | `model_type` | `string` | ✅ Oui | FQCN du modèle |
 | `email` | `string` | ✅ Oui | Email de l'utilisateur |
 | `password` | `string` | ✅ Oui | Mot de passe |
+| `remember_me` | `boolean` | ❌ Non | Cookie persistant (défaut: false) |
 
 **Requête :**
 ```json
 {
     "model_type": "App\\Models\\User",
     "email": "john@example.com",
-    "password": "Password123!"
+    "password": "Password123!",
+    "remember_me": true
 }
 ```
 
@@ -1155,6 +1171,77 @@ $user->save();
 
 ---
 
+### 14. Restauration de cookie - `POST /restore-cookie`
+
+Restaure un cookie d'authentification à partir d'un token en clair encore détenu
+par le client. Utile quand le navigateur a supprimé le cookie mais que le client
+conserve toujours son token (localStorage, stockage natif).
+
+| Champ | Type | Requis | Description |
+|-------|------|--------|-------------|
+| `model_type` | `string` | ✅ Oui | FQCN du modèle |
+| `token` | `string` | ✅ Oui | Plain token encore détenu par le client (min 16 caractères) |
+| `remember_me` | `boolean` | ❌ Non | `true` → cookie persistant, `false` → cookie de session (défaut) |
+
+**Requête :**
+```json
+{
+    "model_type": "App\\Models\\User",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "remember_me": true
+}
+```
+
+**Réponse (200 OK) :**
+```json
+{
+    "message": "Cookie restored successfully",
+    "auth": {
+        "id": 1,
+        "name": "John Doe",
+        "email": "john@example.com",
+        "emailVerifiedAt": "2026-08-14T12:00:00+00:00",
+        "createdAt": "2026-08-14T10:00:00+00:00",
+        "updatedAt": "2026-08-14T12:00:00+00:00"
+    }
+}
+```
+
+Le cookie configuré via `nemesis.web.cookie_name` est posé dans la réponse.
+
+**Erreur - Token invalide ou expiré (401) :**
+```json
+{
+    "message": "Invalid token",
+    "status": 401,
+    "errorCode": "INVALID_TOKEN"
+}
+```
+
+**Erreur - Validation (422) :**
+```json
+{
+    "message": "The token field is required.",
+    "status": 422,
+    "errorCode": "VALIDATION_ERROR",
+    "errors": {
+        "token": ["The token field is required."]
+    }
+}
+```
+
+**Notes :**
+- **Route publique** : pas de middleware `nemesis.token`, car c'est précisément
+  parce que le cookie a disparu que le client ne peut plus s'authentifier autrement.
+- **Aucun nouveau token n'est créé** : le cookie restauré porte exactement le même
+  plain token envoyé dans le body.
+- **Vérifications côté serveur** : hash du token, existence en base, `tokenable_type`,
+  non-révocation, non-expiration, existence du modèle propriétaire.
+- **Intégration client recommandée** : appeler `/me` au démarrage. Si `401` alors
+  que le token est présent dans `localStorage`, appeler `/restore-cookie`.
+
+---
+
 ## 🧩 Le service d'authentification
 
 ### Qu'est-ce que `MailAuthenticationService` ?
@@ -1172,6 +1259,7 @@ $authService = MailAuthenticationService::for(User::class);
 | `register(AbstractRecord $record)` | Crée un nouvel utilisateur |
 | `login(string $email, string $password)` | Authentifie un utilisateur |
 | `logout(Authenticatable&Model $user, string $token)` | Révoque un token |
+| `restoreCookie(RestoreCookieAuthRecord $record)` | Restaure un cookie à partir d'un plain token encore valide |
 | `sendPasswordResetOtp(string $email)` | Envoie un OTP de réinitialisation |
 | `resetPassword(string $email, string $code, string $password)` | Réinitialise le mot de passe |
 | `sendEmailVerificationOtp(Authenticatable $user)` | Envoie un OTP de vérification |
@@ -1194,6 +1282,8 @@ $authService = MailAuthenticationService::for(User::class);
 | `afterLogin()` | Après connexion | Last login, sessions |
 | `beforeLogout()` | Avant déconnexion | Journalisation |
 | `afterLogout()` | Après déconnexion | Nettoyage sessions |
+| `beforeRestoreCookie()` | Avant restauration de cookie | Vérifications préalables |
+| `afterRestoreCookie()` | Après tentative de restauration | Audit, métriques |
 | `beforeSendPasswordResetOtp()` | Avant OTP reset | Vérification email |
 | `afterSendPasswordResetOtp()` | Après OTP reset | Notification admin |
 | `beforeResetPassword()` | Avant reset | Validation supplémentaire |
@@ -1281,6 +1371,7 @@ namespace App\Services;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
 use AndyDefer\AuthenticationKit\Mail\Records\NotificationMessageRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\RestoreCookieAuthRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Interfaces\Transformable;
 use Illuminate\Database\Eloquent\Model;
@@ -1419,6 +1510,30 @@ final class CustomAuthService extends MailAuthenticationService
     {
         $this->clearUserSession($authenticatable);
         Log::info('Logout successful', ['user_id' => $authenticatable->id]);
+    }
+
+    protected function beforeRestoreCookie(RestoreCookieAuthRecord $record): void
+    {
+        // Exemple : interdire la restauration hors des heures ouvrées
+        // if (now()->hour < 6 || now()->hour > 22) {
+        //     throw new \RuntimeException('Cookie restoration is not allowed at this time');
+        // }
+    }
+
+    protected function afterRestoreCookie(RestoreCookieAuthRecord $record, ?Model $auth): void
+    {
+        if ($auth === null) {
+            Log::warning('Cookie restoration failed', [
+                'model_type' => $record->model_type,
+            ]);
+
+            return;
+        }
+
+        Log::info('Cookie restored', [
+            'user_id' => $auth->getKey(),
+            'model_type' => $record->model_type,
+        ]);
     }
 
     protected function beforeSendPasswordResetOtp(string|Transformable $email): void
@@ -1663,6 +1778,7 @@ abstract class AbstractAction
 | `UpdateEmailAction` | Confirmation changement d'email | `UpdateEmailAuthRecord` | ✅ |
 | `SendTwoFactorOtpAction` | Envoi OTP 2FA | `SendTwoFactorOtpAuthRecord` | ✅ |
 | `VerifyTwoFactorOtpAction` | Vérification OTP 2FA | `VerifyTwoFactorOtpAuthRecord` | ✅ |
+| `RestoreCookieAction` | Restauration de cookie depuis un plain token | `RestoreCookieAuthRecord` | ❌ |
 
 ### Flux d'exécution d'une Action
 
@@ -1903,6 +2019,8 @@ Le package utilise l'énumération `ErrorCode` pour standardiser les réponses d
 | `TWO_FACTOR_SEND_ERROR` | 422 | Exception métier lors de l'envoi OTP 2FA |
 | `TWO_FACTOR_VERIFY_FAILED` | 400 | Vérification OTP 2FA échouée (code invalide, expiré, déjà utilisé) |
 | `TWO_FACTOR_VERIFY_ERROR` | 422 | Exception métier lors de la vérification OTP 2FA |
+| `COOKIE_RESTORE_DISABLED` | 401 | Stockage cookie désactivé (`store_token_in_cookie = false`) |
+| `COOKIE_RESTORE_FAILED` | 401 | Restauration impossible (token inexistant, modèle introuvable, etc.) |
 
 ### ErrorType (Logs)
 
@@ -1928,6 +2046,7 @@ L'énumération `ErrorType` est utilisée pour les logs, offrant une meilleure a
 | `missing_credentials` | Identifiants manquants |
 | `invalid_two_factor_purpose` | Purpose 2FA invalide |
 | `two_factor_not_enabled` | 2FA non activée pour ce compte |
+| `cookie_restore_failed` | Échec de restauration de cookie |
 
 ### Structure des erreurs
 
@@ -1961,6 +2080,9 @@ L'énumération `ErrorType` est utilisée pour les logs, offrant une meilleure a
 | **Purpose isolation** | OTPs 2FA isolés par purpose (`two_factor_{context}`) | Oui |
 | **Email update proof** | OTP envoyé sur la nouvelle adresse, jamais l'ancienne | Oui |
 | **Reset of email_verified_at** | Vérification requise après changement d'email | Oui |
+| **Restauration cookie** | Vérification hash + type + expiration + propriétaire | Oui |
+| **Route publique restore-cookie** | Seul secret = plain token (déjà porteur de credentials) | Oui |
+| **Aucun nouveau token** | La restauration réutilise le token existant, jamais régénéré | Oui |
 
 ---
 
@@ -2189,6 +2311,55 @@ public function test_complete_two_factor_flow(): void
 }
 ```
 
+### Exemple : test du flux de restauration de cookie
+
+```php
+public function test_complete_restore_cookie_flow(): void
+{
+    $this->app['config']->set('authentication-kit.store_token_in_cookie', true);
+    $this->refreshConfigService();
+
+    $user = TestUserMail::create([
+        'name' => 'Restore User',
+        'email' => 'restore@example.com',
+        'password' => bcrypt('Password123!'),
+    ]);
+
+    // 1. Login pour obtenir un plain token (comme si le client l'avait en localStorage)
+    $loginResponse = $this->postJson('/api/login', [
+        'model_type' => TestUserMail::class,
+        'email' => 'restore@example.com',
+        'password' => 'Password123!',
+    ]);
+
+    $loginResponse->assertStatus(200);
+    $plainToken = $loginResponse->json('token');
+
+    // 2. Simuler la suppression du cookie par le navigateur
+    $this->flushQueuedCookies();
+
+    // 3. Appeler /restore-cookie avec le plain token
+    $restoreResponse = $this->postJson('/api/restore-cookie', [
+        'model_type' => TestUserMail::class,
+        'token' => $plainToken,
+        'remember_me' => true,
+    ]);
+
+    $restoreResponse->assertStatus(200);
+    $restoreResponse->assertJson([
+        'message' => 'Cookie restored successfully',
+        'auth' => [
+            'id' => $user->id,
+            'email' => 'restore@example.com',
+        ],
+    ]);
+
+    // 4. Le cookie doit être posé
+    $cookie = $this->getCookieObject($restoreResponse, 'nemesis_token');
+    $this->assertNotNull($cookie);
+}
+```
+
 ---
 
 ## 🔄 Migration de versions
@@ -2341,6 +2512,57 @@ public function logTwoFactorVerified(
 ): void;
 ```
 
+### De v1.13.x à v1.14.0 — Restauration de cookie
+
+#### 1. Nouvelle route
+
+Ajouter dans votre groupe public `validate.mail.authenticatable` :
+
+```php
+Route::post('/restore-cookie', action_route(
+    RestoreCookieRequest::class,
+    RestoreCookieAction::class
+))->name('restore-cookie');
+```
+
+Imports :
+
+```php
+use AndyDefer\AuthenticationKit\Mail\Actions\RestoreCookieAction;
+use AndyDefer\AuthenticationKit\Mail\Requests\RestoreCookieRequest;
+```
+
+#### 2. Nouvelles classes du package
+
+| Classe | Rôle |
+|--------|------|
+| `RestoreCookieRequest` | Validation du payload (`model_type`, `token`, `remember_me`) |
+| `RestoreCookieAuthRecord` | Record interne (FQCN, token, `remember_me`) |
+| `RestoreCookieAction` | Action publique appelée par la route |
+| `AuthCookieRestoredData` | DTO de réponse (`message`, `auth`) |
+
+#### 3. Nouvelle méthode du service
+
+`MailAuthenticationService::restoreCookie(RestoreCookieAuthRecord $record): ?Model`
+
+Si vous avez un service personnalisé, vous pouvez surcharger les deux nouveaux hooks :
+
+- `beforeRestoreCookie(RestoreCookieAuthRecord $record): void`
+- `afterRestoreCookie(RestoreCookieAuthRecord $record, ?Model $auth): void`
+
+#### 4. Prérequis côté Nemesis
+
+`NemesisInterface` doit exposer :
+
+- `findByHash(string $hash): ?NemesisToken`
+
+`NemesisConfigInterface::tokenConfig()->hash_algorithm` doit être accessible.
+
+#### 5. Intégration client
+
+Ajoutez au démarrage de votre application un appel à `/restore-cookie` lorsque
+`/me` retourne `401` et que le token est présent en `localStorage`.
+
 ---
 
 ## 📦 Structure du package
@@ -2354,6 +2576,7 @@ src/
 │   │   ├── EmailRegisterAction.php       # Inscription
 │   │   ├── GetCurrentUserAction.php      # Utilisateur courant
 │   │   ├── ResetPasswordAction.php       # Réinitialisation
+│   │   ├── RestoreCookieAction.php       # Restauration de cookie
 │   │   ├── SendPasswordResetLinkAction.php # Envoi OTP reset
 │   │   ├── SendEmailVerificationAction.php # Envoi OTP vérif
 │   │   ├── ResendEmailVerificationAction.php # Renvoi OTP
@@ -2377,13 +2600,17 @@ src/
 │   │   ├── EmailLoginAuthRecord.php
 │   │   ├── EmailLogoutAuthRecord.php
 │   │   ├── EmailRegisterAuthRecord.php
+│   │   ├── RestoreCookieAuthRecord.php   # Record restauration cookie
 │   │   ├── SendEmailUpdateOtpAuthRecord.php
 │   │   ├── UpdateEmailAuthRecord.php
 │   │   ├── SendTwoFactorOtpAuthRecord.php
 │   │   └── VerifyTwoFactorOtpAuthRecord.php
+│   ├── Requests/
+│   │   └── RestoreCookieRequest.php      # Validation payload restauration
 │   ├── Datas/
 │   │   ├── AuthLoginData.php
 │   │   ├── AuthRegisteredData.php
+│   │   ├── AuthCookieRestoredData.php    # DTO réponse restauration
 │   │   ├── ErrorResponseData.php
 │   │   └── SuccessResponseData.php
 │   ├── Enums/
@@ -2571,6 +2798,17 @@ class AuthService
                 'code' => $code,
             ]
         );
+
+        return $response->json();
+    }
+
+    public function restoreCookie(string $plainToken, bool $rememberMe = true): array
+    {
+        $response = Http::post(self::BASE_URL . '/restore-cookie', [
+            'model_type' => self::MODEL_TYPE,
+            'token' => $plainToken,
+            'remember_me' => $rememberMe,
+        ]);
 
         return $response->json();
     }
@@ -2853,6 +3091,42 @@ class AuthService {
 
       const result = await response.json();
       return { success: response.ok, data: result };
+    } catch (error) {
+      return { success: false, error: error as ErrorResponse };
+    }
+  }
+
+  async restoreCookie(): Promise<{ success: boolean; data?: any; error?: ErrorResponse }> {
+    const token = localStorage.getItem('auth_token');
+
+    if (token === null) {
+      return { success: false, error: { message: 'No token stored', status: 401, errorCode: 'NO_TOKEN' } };
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/restore-cookie`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_type: MODEL_TYPE,
+          token,
+          remember_me: true,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        return { success: true, data: result };
+      }
+
+      // Le token est définitivement invalide → nettoyer
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      this.token = null;
+
+      return { success: false, error: result };
     } catch (error) {
       return { success: false, error: error as ErrorResponse };
     }
@@ -3167,7 +3441,6 @@ const ChangePassword: React.FC = () => {
     }
 
     // 2. Code valide : procéder au changement de mot de passe
-    // (appel à un endpoint custom qui valide le 2FA côté serveur)
     const response = await fetch('/api/change-password', {
       method: 'POST',
       headers: {
@@ -3234,3 +3507,220 @@ const ChangePassword: React.FC = () => {
 
 export default ChangePassword;
 ```
+
+### Composant AuthBootstrap (restauration automatique de cookie)
+
+```tsx
+// components/AuthBootstrap.tsx
+
+import React, { useEffect, useState } from 'react';
+import { authService } from '../services/auth.service';
+
+const AuthBootstrap: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [ready, setReady] = useState(false);
+
+    useEffect(() => {
+        const bootstrap = async () => {
+            const meResult = await authService.me();
+
+            if (!meResult.success && authService.getToken() !== null) {
+                // Cookie disparu → tenter la restauration
+                await authService.restoreCookie();
+            }
+
+            setReady(true);
+        };
+
+        bootstrap();
+    }, []);
+
+    if (!ready) {
+        return <div>Initialisation...</div>;
+    }
+
+    return <>{children}</>;
+};
+
+export default AuthBootstrap;
+```
+
+---
+
+## 🍪 Restauration de cookie
+
+### Le problème
+
+Les navigateurs suppriment parfois les cookies d'authentification sans prévenir :
+nettoyage de vie privée, expiration implicite, gestion agressive par le navigateur,
+changement de politique de sécurité, etc. L'utilisateur se retrouve déconnecté
+alors que son **token en clair est toujours valide** et toujours stocké côté client
+(localStorage pour les SPA, stockage natif pour les applications mobiles).
+
+### La solution
+
+Le endpoint `POST /restore-cookie` permet au client de **réémettre le cookie**
+à partir du token qu'il détient encore, sans avoir à se reconnecter.
+
+Le client envoie :
+
+- `model_type` : FQCN du modèle,
+- `token` : le plain token qu'il détient,
+- `remember_me` (optionnel) : `true` pour un cookie persistant, `false` pour un cookie de session.
+
+Le serveur :
+
+1. hache le token reçu (algorithme de `NemesisConfig::tokenConfig()->hash_algorithm`),
+2. retrouve le token correspondant via `NemesisInterface::findByHash()`,
+3. vérifie que le token est **valide** (non révoqué, non expiré, `tokenable_type` cohérent),
+4. retrouve le modèle propriétaire,
+5. réémet le cookie via `CookieTokenStorage::store()`.
+
+**Aucun nouveau token n'est créé.** Le cookie restauré porte exactement le même
+token, préservant l'identité du client.
+
+### Route
+
+La route est **publique** (pas de middleware `nemesis.token`) : c'est justement
+parce que le cookie a disparu que le client ne peut plus s'authentifier autrement
+que par le token en clair qu'il détient.
+
+```php
+Route::middleware(['validate.mail.authenticatable'])->group(function (): void {
+    // ... routes existantes
+
+    Route::post('/restore-cookie', action_route(
+        RestoreCookieRequest::class,
+        RestoreCookieAction::class
+    ))->name('restore-cookie');
+});
+```
+
+### Requête / Réponse
+
+**Requête :**
+```json
+{
+    "model_type": "App\\Models\\User",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "remember_me": true
+}
+```
+
+**Réponse (200 OK) :**
+```json
+{
+    "message": "Cookie restored successfully",
+    "auth": {
+        "id": 1,
+        "name": "John Doe",
+        "email": "john@example.com",
+        "emailVerifiedAt": "2026-08-14T12:00:00+00:00",
+        "createdAt": "2026-08-14T10:00:00+00:00",
+        "updatedAt": "2026-08-14T12:00:00+00:00"
+    }
+}
+```
+
+Le cookie configuré (`nemesis.web.cookie_name`) est émis dans la réponse.
+
+**Erreur - Token invalide ou expiré (401) :**
+```json
+{
+    "message": "Invalid token",
+    "status": 401,
+    "errorCode": "INVALID_TOKEN"
+}
+```
+
+### Conditions de réussite
+
+La restauration ne réussit que si **toutes** les conditions suivantes sont réunies :
+
+| Condition | Vérifiée par |
+|-----------|--------------|
+| Cookie activé dans la config | `AuthenticationKitConfigInterface::shouldStoreTokenInCookie()` |
+| Token existe en base | `NemesisInterface::findByHash()` |
+| `tokenable_type` correspond au modèle demandé | Comparaison stricte |
+| Token non révoqué (soft delete) | `token->trashed()` |
+| Token non expiré | `token->expires_at->isPast()` |
+| Utilisateur toujours présent | `Model::find()` |
+
+Toute condition non remplie → `null` côté service → réponse HTTP `401` avec
+`errorCode: INVALID_TOKEN`.
+
+### Comportement du cookie
+
+| Paramètre | Effet sur le cookie |
+|-----------|---------------------|
+| `remember_me = true` | Cookie persistant sur la durée configurée (`getCookieDuration()`) |
+| `remember_me = false` | Cookie de session (expire à la fermeture du navigateur) |
+| `store_token_in_cookie = false` | Aucun cookie émis, réponse 401 systématique |
+
+### Intégration côté client
+
+**Stratégie recommandée** : au démarrage de l'application, tenter un appel à `/me`
+ou `GetCurrentUserAction`. Si le retour est `401` alors que le token est encore
+présent côté client, appeler `/restore-cookie`.
+
+**Exemple TypeScript :**
+
+```typescript
+async function bootstrapAuth(): Promise<void> {
+    const token = localStorage.getItem('auth_token');
+
+    if (token === null) {
+        return;
+    }
+
+    // 1. Vérifier si la session est toujours valide côté serveur
+    const meResponse = await fetch('/api/me', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_type: 'App\\Models\\User' }),
+    });
+
+    if (meResponse.ok) {
+        return;
+    }
+
+    // 2. Cookie disparu → tenter la restauration
+    const restoreResponse = await fetch('/api/restore-cookie', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model_type: 'App\\Models\\User',
+            token,
+            remember_me: true,
+        }),
+    });
+
+    if (!restoreResponse.ok) {
+        // Token définitivement invalide → déconnexion complète
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+    }
+}
+```
+
+### Sécurité
+
+- **Route publique** : le seul secret est le plain token, qui est déjà un porteur
+  de credentials. Aucune donnée sensible supplémentaire ne circule dans le body.
+- **Pas de nouvelle ligne en base** : on réutilise le token existant, aucune
+  régénération ne se produit.
+- **Vérification stricte du `tokenable_type`** : impossible de restaurer un cookie
+  pour un modèle avec un token qui ne lui appartient pas.
+- **Rate limiting recommandé** : ajoutez `->middleware('throttle:10,1')` sur la
+  route si vous voulez limiter les tentatives (utile contre le brute-force sur la
+  valeur du token, mais un token fait 64 caractères aléatoires — le brute-force est
+  déjà impraticable).
+
+### Différences avec `/me`
+
+| Endpoint | Rôle |
+|----------|------|
+| `POST /me` | **Lit** le cookie ou le Bearer pour identifier l'utilisateur courant |
+| `POST /restore-cookie` | **Écrit** un nouveau cookie à partir d'un plain token |

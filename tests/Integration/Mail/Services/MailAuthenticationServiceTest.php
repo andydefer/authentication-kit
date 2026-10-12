@@ -9,6 +9,7 @@ namespace AndyDefer\AuthenticationKit\Tests\Integration\Mail\Services;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Mail\Records\EmailRegisterAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\RestoreCookieAuthRecord;
 use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
@@ -21,6 +22,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use ReflectionClass;
 use Symfony\Component\HttpFoundation\Cookie;
 
 final class MailAuthenticationServiceTest extends IntegrationTestCase
@@ -100,6 +102,32 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
         }
 
         return null;
+    }
+
+    /**
+     * Discard every cookie currently queued on the container's CookieJar.
+     *
+     * The jar is a long-lived singleton that accumulates cookies across all
+     * calls made inside a single test. Assertions such as "no cookie was
+     * queued" would otherwise be polluted by cookies emitted by earlier
+     * operations (typically the `login()` performed while arranging the
+     * test). Flushing the jar right before the action under test ensures
+     * that `getQueuedCookie()` only ever observes what that action emitted.
+     */
+    private function flushQueuedCookies(): void
+    {
+        $cookieJar = app('cookie');
+
+        if (method_exists($cookieJar, 'flushQueuedCookies')) {
+            $cookieJar->flushQueuedCookies();
+
+            return;
+        }
+
+        $reflection = new ReflectionClass($cookieJar);
+        $property = $reflection->getProperty('queued');
+        $property->setAccessible(true);
+        $property->setValue($cookieJar, []);
     }
 
     public function test_for_returns_instance_for_valid_model(): void
@@ -268,6 +296,289 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
         $this->assertFalse($result);
     }
+
+    // ========================================================================
+    // RESTORE COOKIE — TESTS
+    // ========================================================================
+
+    public function test_restore_cookie_returns_authenticatable_and_writes_cookie_with_valid_token(): void
+    {
+        // Arrange: cookie storage on and a user with a valid login token
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $user = $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+        $plainToken = $login->plain_token;
+
+        // Discard cookies emitted by login so the assertion below only
+        // observes what restoreCookie() emits.
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $plainToken,
+            remember_me: false,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert: returns the model and queues the cookie
+        $this->assertNotNull($restored);
+        $this->assertInstanceOf(TestUserMail::class, $restored);
+        $this->assertSame($user->id, $restored->getKey());
+
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
+    }
+
+    public function test_restore_cookie_with_remember_me_sets_full_duration_cookie(): void
+    {
+        // Arrange
+        config()->set('authentication-kit.store_token_in_cookie', true);
+        config()->set('authentication-kit.cookie_duration', 525600);
+
+        $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: true,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNotNull($restored);
+
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
+
+        $expectedExpiration = now()->addMinutes(525600)->getTimestamp();
+        $this->assertEqualsWithDelta($expectedExpiration, $queued->getExpiresTime(), 5);
+    }
+
+    public function test_restore_cookie_without_remember_me_sets_session_cookie(): void
+    {
+        // Arrange
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: false,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNotNull($restored);
+
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
+        $this->assertSame(0, $queued->getExpiresTime());
+    }
+
+    public function test_restore_cookie_returns_null_for_invalid_token(): void
+    {
+        // Arrange
+        config()->set('authentication-kit.store_token_in_cookie', true);
+        $this->createTestUser();
+
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: 'this-is-not-a-valid-plain-token',
+            remember_me: false,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNull($restored);
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
+    }
+
+    public function test_restore_cookie_returns_null_for_revoked_token(): void
+    {
+        // Arrange
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $user = $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+
+        $this->service->logout($user, $login->plain_token);
+
+        // Discard cookies emitted by login + logout so the assertion below
+        // only observes what restoreCookie() emits.
+        $this->flushQueuedCookies();
+
+        // Act: the token has been revoked, restore must fail
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: false,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNull($restored);
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
+    }
+
+    public function test_restore_cookie_returns_null_for_expired_token(): void
+    {
+        // Arrange
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+
+        $token = NemesisToken::where('tokenable_type', TestUserMail::class)->first();
+        $this->assertNotNull($token);
+
+        $token->expires_at = now()->subMinutes(5);
+        $token->save();
+
+        // Discard cookies emitted by login so the assertion below only
+        // observes what restoreCookie() emits.
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: false,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNull($restored);
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
+    }
+
+    public function test_restore_cookie_returns_null_for_mismatched_model_type(): void
+    {
+        // Arrange
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+
+        // Force a wrong tokenable_type in DB to simulate a mismatch.
+        $token = NemesisToken::where('tokenable_type', TestUserMail::class)->first();
+        $this->assertNotNull($token);
+        $token->tokenable_type = 'App\\Models\\OtherUser';
+        $token->save();
+
+        // Discard cookies emitted by login so the assertion below only
+        // observes what restoreCookie() emits.
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: false,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNull($restored);
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
+    }
+
+    public function test_restore_cookie_returns_null_when_store_token_in_cookie_disabled(): void
+    {
+        // Arrange: cookie storage explicitly disabled and config rebound
+        $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+
+        $configRepository = app(Repository::class);
+        $configRepository->set('authentication-kit.store_token_in_cookie', false);
+
+        $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
+
+        // Discard cookies emitted before we flip the config.
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: true,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNull($restored);
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
+    }
+
+    public function test_restore_cookie_returns_null_when_authenticatable_is_missing(): void
+    {
+        // Arrange
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $user = $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+
+        $this->assertNotNull($login);
+
+        // Hard-delete the user while leaving the token in place
+        $user->forceDelete();
+
+        // Discard cookies emitted by login so the assertion below only
+        // observes what restoreCookie() emits.
+        $this->flushQueuedCookies();
+
+        // Act
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: false,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // Assert
+        $this->assertNull($restored);
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
+    }
+
+    // ========================================================================
+    // PASSWORD RESET — TESTS
+    // ========================================================================
 
     public function test_send_password_reset_otp_sends_otp_for_existing_user(): void
     {
@@ -874,6 +1185,8 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
             remember_me: true,
         );
 
+        $this->flushQueuedCookies();
+
         // Act
         $this->service->register($record);
 
@@ -902,6 +1215,8 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
             remember_me: false,
         );
 
+        $this->flushQueuedCookies();
+
         // Act
         $this->service->register($record);
 
@@ -922,6 +1237,8 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
         config()->set('authentication-kit.store_token_in_cookie', true);
         config()->set('authentication-kit.cookie_duration', 525600);
 
+        $this->flushQueuedCookies();
+
         // Act
         $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD, rememberMe: true);
 
@@ -940,6 +1257,8 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
         // Arrange: existing user, cookie storage on, remember_me disabled
         $this->createTestUser();
         config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $this->flushQueuedCookies();
 
         // Act
         $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
@@ -961,6 +1280,8 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
         $configRepository->set('authentication-kit.store_token_in_cookie', false);
 
         $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
+
+        $this->flushQueuedCookies();
 
         // Act
         $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD, rememberMe: true);
@@ -1123,5 +1444,39 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
             $otp->code,
         );
         $this->assertFalse($second);
+    }
+
+    public function test_complete_restore_cookie_flow(): void
+    {
+        // 1. Cookie storage on, register a user, then log in to obtain a
+        //    valid plain token (simulating the client still holding it in
+        //    localStorage after the cookie was dropped by the browser).
+        config()->set('authentication-kit.store_token_in_cookie', true);
+
+        $user = $this->createTestUser();
+        $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
+        $this->assertNotNull($login);
+
+        // 2. Discard any cookie emitted so far to simulate a browser that
+        //    dropped the cookie before calling /restore-cookie.
+        $this->flushQueuedCookies();
+        $this->assertNull($this->getQueuedCookie('nemesis_token'));
+
+        // 3. Client calls /restore-cookie with the plain token it still holds.
+        $record = new RestoreCookieAuthRecord(
+            model_type: TestUserMail::class,
+            token: $login->plain_token,
+            remember_me: true,
+        );
+
+        $restored = $this->service->restoreCookie($record);
+
+        // 4. Assert: same user, same identity, cookie re-emitted.
+        $this->assertNotNull($restored);
+        $this->assertInstanceOf(TestUserMail::class, $restored);
+        $this->assertSame($user->id, $restored->getKey());
+
+        $queued = $this->getQueuedCookie('nemesis_token');
+        $this->assertNotNull($queued);
     }
 }

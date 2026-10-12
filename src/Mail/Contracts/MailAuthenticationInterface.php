@@ -6,6 +6,7 @@ namespace AndyDefer\AuthenticationKit\Mail\Contracts;
 
 use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
 use AndyDefer\AuthenticationKit\Mail\Records\LoginResultRecord;
+use AndyDefer\AuthenticationKit\Mail\Records\RestoreCookieAuthRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use AndyDefer\DomainStructures\Interfaces\Transformable;
 use AndyDefer\Nemesis\Models\NemesisToken;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Model;
  *
  * Defines the core authentication operations for email-based user management,
  * including registration, login, logout, password reset, email verification,
- * email update, and two-factor authentication.
+ * email update, two-factor authentication, and cookie restoration.
  */
 interface MailAuthenticationInterface
 {
@@ -42,6 +43,21 @@ interface MailAuthenticationInterface
      * Logs out a user by revoking their current token.
      */
     public function logout(Authenticatable&Model $authenticatable, string $plainToken): bool;
+
+    /**
+     * Restores the authentication cookie from a still-valid plain token when
+     * the cookie has been dropped by the browser for any reason.
+     *
+     * The plain token supplied by the client is hashed and looked up against
+     * the stored tokens. When a matching, non-revoked, non-expired token is
+     * found and belongs to the expected model class, the cookie is rewritten
+     * with the same plain token. No new token is issued.
+     *
+     * @param  RestoreCookieAuthRecord  $record  The restore-cookie record
+     * @return (Model&Authenticatable)|null The authenticatable when restoration
+     *                                      succeeded, null otherwise
+     */
+    public function restoreCookie(RestoreCookieAuthRecord $record): ?Model;
 
     /**
      * Sends a password reset OTP to the user's email address.
