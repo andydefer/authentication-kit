@@ -13,12 +13,23 @@ use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use Exception;
 
+/**
+ * Handles Google's OAuth callback: delegates to the Google OAuth service
+ * and returns the HTTP response produced by the service.
+ *
+ * The final presentation (JSON, redirect, session issuance, ...) is decided
+ * by `GoogleOAuthInterface::onCallbackSuccess()` on the resolved service,
+ * not by this Action. Override the service to change the behaviour.
+ */
 final class GoogleCallbackAction extends AbstractAction
 {
     public function __construct(
         private readonly GoogleOAuthInterface $googleOAuth,
     ) {}
 
+    /**
+     * {@inheritDoc}
+     */
     protected function before(AbstractRecord $record): void
     {
         if (! $record instanceof GoogleCallbackRecord) {
@@ -26,6 +37,9 @@ final class GoogleCallbackAction extends AbstractAction
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof GoogleCallbackRecord) {
@@ -33,9 +47,7 @@ final class GoogleCallbackAction extends AbstractAction
         }
 
         try {
-            return ResponseFactory::json(
-                $this->googleOAuth->callback($record)
-            );
+            return $this->googleOAuth->callback($record);
         } catch (GoogleOAuthException $e) {
             if ($e->isProviderError()) {
                 return ErrorCode::GOOGLE_PROVIDER_ERROR->toJsonResponseFactory(

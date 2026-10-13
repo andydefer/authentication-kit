@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Google\Services;
 
+use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
@@ -75,7 +76,7 @@ class GoogleOAuthService implements GoogleOAuthInterface
     /**
      * {@inheritDoc}
      */
-    public function callback(GoogleCallbackRecord $record): GoogleCallbackData
+    public function callback(GoogleCallbackRecord $record): ResponseFactory
     {
         $this->beforeCallback($record);
 
@@ -134,27 +135,51 @@ class GoogleOAuthService implements GoogleOAuthInterface
 
         $this->afterCallback($record, $data);
 
-        return $data;
+        return $this->onCallbackSuccess($data);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function onCallbackSuccess(GoogleCallbackData $data): ResponseFactory
+    {
+        return ResponseFactory::json($data);
     }
 
     // ========================================================================
     // HOOKS
     // ========================================================================
 
+    /**
+     * Hook called before building the authorization redirect URL.
+     */
     protected function beforeAuthorizationRedirect(GoogleRedirectRecord $record): void {}
 
+    /**
+     * Hook called after the authorization redirect payload is built.
+     */
     protected function afterAuthorizationRedirect(
         GoogleRedirectRecord $record,
         GoogleRedirectData $data,
     ): void {}
 
+    /**
+     * Hook called before handling the OAuth callback.
+     */
     protected function beforeCallback(GoogleCallbackRecord $record): void {}
 
+    /**
+     * Hook called after the OAuth callback is successfully processed,
+     * right before onCallbackSuccess() decides the final response.
+     */
     protected function afterCallback(
         GoogleCallbackRecord $record,
         GoogleCallbackData $data,
     ): void {}
 
+    /**
+     * Hook called when the callback fails (Google error, invalid state, etc.).
+     */
     protected function afterCallbackFailed(
         GoogleCallbackRecord $record,
         ErrorCode $error,

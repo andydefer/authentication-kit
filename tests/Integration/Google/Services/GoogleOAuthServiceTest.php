@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Integration\Google\Services;
 
+use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
@@ -36,7 +38,6 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        // 1. Config complète AVANT tout rebind
         $this->app['config']->set('authentication-kit.google', [
             'client_id' => 'test-client-id.apps.googleusercontent.com',
             'client_secret' => 'test-client-secret',
@@ -52,34 +53,27 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             'pkce_verifier_length' => 64,
         ]);
 
-        // 2. Purger les instances en cache
         $this->app->forgetInstance(AuthenticationKitConfig::class);
         $this->app->forgetInstance(ClientService::class);
         $this->app->forgetInstance(GooglePkceGenerator::class);
         $this->app->forgetInstance(GoogleStateStoreInterface::class);
 
-        // 3. Re-binder AuthenticationKitConfig
         $this->app->singleton(
             AuthenticationKitConfig::class,
             function ($app): AuthenticationKitConfig {
-                return new AuthenticationKitConfig(
-                    $app['config']
-                );
+                return new AuthenticationKitConfig($app['config']);
             }
         );
 
-        // 4. Guzzle mock
         $this->mockHandler = new MockHandler;
         $handlerStack = HandlerStack::create($this->mockHandler);
         $guzzle = new GuzzleClient(['handler' => $handlerStack]);
 
         $this->app->instance(ClientService::class, new ClientService($guzzle));
 
-        // 5. State store + verifier mock
         $this->stateStore = $this->app->make(GoogleStateStoreInterface::class);
         $this->idTokenVerifierMock = Mockery::mock(GoogleIdTokenVerifier::class);
 
-        // 6. Service
         $this->service = new GoogleOAuthService(
             client: $this->app->make(ClientService::class),
             config: $this->app->make(AuthenticationKitConfig::class),
@@ -99,11 +93,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
     public function test_authorization_redirect_returns_url(): void
     {
-        $record = new GoogleRedirectRecord(
-            state: '',
-            code_challenge: '',
-            nonce: '',
-        );
+        $record = new GoogleRedirectRecord(state: '', code_challenge: '', nonce: '');
 
         $result = $this->service->authorizationRedirect($record);
 
@@ -194,14 +184,12 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
     public function test_callback_exchanges_code_and_returns_tokens(): void
     {
-        // Arrange state
         $this->stateStore->put('valid-state', new GoogleStateRecord(
             code_verifier: 'verifier-xyz',
             nonce: 'nonce-xyz',
             expires_at: time() + 600,
         ), 600);
 
-        // Queue Google token response
         $this->mockHandler->append(new GuzzleResponse(
             200,
             ['Content-Type' => 'application/json'],
@@ -215,14 +203,6 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             ])
         ));
 
-        // Restore the state since pull consumes it
-        $this->stateStore->put('valid-state', new GoogleStateRecord(
-            code_verifier: 'verifier-xyz',
-            nonce: 'nonce-xyz',
-            expires_at: time() + 600,
-        ), 600);
-
-        // Configure the id token verifier mock
         $claims = GoogleIdTokenClaimsData::from([
             'sub' => 'sub-123',
             'email' => 'user@example.com',
@@ -240,15 +220,88 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             ->with('header.payload.signature', 'nonce-xyz')
             ->andReturn($claims);
 
-        $record = new GoogleCallbackRecord(code: 'auth-code', state: 'valid-state');
-        $result = $this->service->callback($record);
+        // Capture the data passed to onCallbackSuccess
+        $captured = null;
 
-        $this->assertSame('header.payload.signature', $result->idToken);
-        $this->assertSame('access-token-xyz', $result->accessToken);
-        $this->assertSame(3600, $result->expiresIn);
-        $this->assertSame('Bearer', $result->tokenType);
-        $this->assertSame('openid email profile', $result->scope);
-        $this->assertSame('sub-123', $result->claims->sub);
+        $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock) extends GoogleOAuthService
+        {
+            public ?GoogleCallbackData $captured = null;
+
+            public function onCallbackSuccess(GoogleCallbackData $data): ResponseFactory
+            {
+                $this->captured = $data;
+
+                return ResponseFactory::json($data);
+            }
+        };
+
+        $record = new GoogleCallbackRecord(code: 'auth-code', state: 'valid-state');
+        $response = $service->callback($record);
+
+        $this->assertInstanceOf(ResponseFactory::class, $response);
+        $this->assertInstanceOf(GoogleCallbackData::class, $service->captured);
+
+        $data = $service->captured;
+
+        $this->assertSame('header.payload.signature', $data->idToken);
+        $this->assertSame('access-token-xyz', $data->accessToken);
+        $this->assertSame(3600, $data->expiresIn);
+        $this->assertSame('Bearer', $data->tokenType);
+        $this->assertSame('openid email profile', $data->scope);
+        $this->assertSame('sub-123', $data->claims->sub);
+    }
+
+    public function test_callback_returns_response_factory_from_on_callback_success(): void
+    {
+        $this->stateStore->put('valid-state', new GoogleStateRecord(
+            code_verifier: 'verifier-xyz',
+            nonce: 'nonce-xyz',
+            expires_at: time() + 600,
+        ), 600);
+
+        $this->mockHandler->append(new GuzzleResponse(
+            200,
+            ['Content-Type' => 'application/json'],
+            json_encode([
+                'id_token' => 'header.payload.signature',
+                'access_token' => 'access-token-xyz',
+                'refresh_token' => 'refresh-token-xyz',
+                'expires_in' => 3600,
+                'token_type' => 'Bearer',
+                'scope' => 'openid email profile',
+            ])
+        ));
+
+        $claims = GoogleIdTokenClaimsData::from([
+            'sub' => 'sub-123',
+            'email' => 'user@example.com',
+            'emailVerified' => true,
+            'iss' => 'https://accounts.google.com',
+            'aud' => 'test-client-id.apps.googleusercontent.com',
+            'exp' => time() + 3600,
+            'iat' => time(),
+            'nonce' => 'nonce-xyz',
+        ]);
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('header.payload.signature', 'nonce-xyz')
+            ->andReturn($claims);
+
+        // Override onCallbackSuccess to return a redirect
+        $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock) extends GoogleOAuthService
+        {
+            public function onCallbackSuccess(GoogleCallbackData $data): ResponseFactory
+            {
+                return ResponseFactory::redirect('/dashboard');
+            }
+        };
+
+        $record = new GoogleCallbackRecord(code: 'auth-code', state: 'valid-state');
+        $response = $service->callback($record);
+
+        $this->assertInstanceOf(ResponseFactory::class, $response);
     }
 
     public function test_callback_consumes_state_so_it_cannot_be_replayed(): void
@@ -259,7 +312,6 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             expires_at: time() + 600,
         ), 600);
 
-        // First pull consumes it
         $this->assertNotNull($this->stateStore->pull('one-shot'));
 
         $record = new GoogleCallbackRecord(code: 'code', state: 'one-shot');
