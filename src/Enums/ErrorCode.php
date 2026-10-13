@@ -55,6 +55,13 @@ enum ErrorCode: string implements ErrorDescribable
     case TWO_FACTOR_VERIFY_FAILED = 'TWO_FACTOR_VERIFY_FAILED';
     case TWO_FACTOR_VERIFY_ERROR = 'TWO_FACTOR_VERIFY_ERROR';
 
+    // Google OAuth
+    case GOOGLE_REDIRECT_ERROR = 'GOOGLE_REDIRECT_ERROR';
+    case GOOGLE_CALLBACK_ERROR = 'GOOGLE_CALLBACK_ERROR';
+    case GOOGLE_STATE_MISMATCH = 'GOOGLE_STATE_MISMATCH';
+    case GOOGLE_STATE_EXPIRED = 'GOOGLE_STATE_EXPIRED';
+    case GOOGLE_PROVIDER_ERROR = 'GOOGLE_PROVIDER_ERROR';
+
     /**
      * {@inheritDoc}
      */
@@ -90,7 +97,10 @@ enum ErrorCode: string implements ErrorDescribable
             self::EMAIL_UPDATE_FAILED,
             self::TWO_FACTOR_VERIFY_FAILED,
             self::RESET_LINK_FAILED,
-            self::MODEL_TYPE_REQUIRED => HttpStatusCode::BAD_REQUEST,
+            self::MODEL_TYPE_REQUIRED,
+            self::GOOGLE_STATE_MISMATCH,
+            self::GOOGLE_STATE_EXPIRED,
+            self::GOOGLE_PROVIDER_ERROR => HttpStatusCode::BAD_REQUEST,
 
             self::INVALID_CREDENTIALS,
             self::INVALID_TOKEN,
@@ -101,6 +111,9 @@ enum ErrorCode: string implements ErrorDescribable
             self::TWO_FACTOR_SEND_FAILED => HttpStatusCode::TOO_MANY_REQUESTS,
 
             self::AUTHENTICATABLE_NOT_FOUND => HttpStatusCode::NOT_FOUND,
+
+            self::GOOGLE_REDIRECT_ERROR,
+            self::GOOGLE_CALLBACK_ERROR => HttpStatusCode::INTERNAL_SERVER_ERROR,
         };
     }
 
@@ -146,6 +159,12 @@ enum ErrorCode: string implements ErrorDescribable
             self::TWO_FACTOR_SEND_ERROR => 'An error occurred while sending the two-factor code',
             self::TWO_FACTOR_VERIFY_FAILED => 'Invalid or expired two-factor code',
             self::TWO_FACTOR_VERIFY_ERROR => 'An error occurred while verifying the two-factor code',
+
+            self::GOOGLE_REDIRECT_ERROR => 'An error occurred while building the Google authorization URL',
+            self::GOOGLE_CALLBACK_ERROR => 'An error occurred during Google authentication',
+            self::GOOGLE_STATE_MISMATCH => 'Google OAuth state mismatch',
+            self::GOOGLE_STATE_EXPIRED => 'Google OAuth state has expired',
+            self::GOOGLE_PROVIDER_ERROR => 'Google returned an error',
         };
     }
 

@@ -1,0 +1,160 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AndyDefer\AuthenticationKit\Google\Services;
+
+use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
+use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleRedirectData;
+use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
+use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
+use AndyDefer\AuthenticationKit\Google\Records\GoogleRedirectRecord;
+use AndyDefer\AuthenticationKit\Google\Records\GoogleStateRecord;
+use AndyDefer\AuthenticationKit\Google\Requests\GoogleAuthorizationRedirectRequest;
+use AndyDefer\AuthenticationKit\Google\Requests\GoogleTokenExchangeRequest;
+use AndyDefer\AuthenticationKit\Google\Responses\GoogleTokenExchangeResponse;
+use AndyDefer\PhpClient\Clients\ClientService;
+
+class GoogleOAuthService implements GoogleOAuthInterface
+{
+    public function __construct(
+        private readonly ClientService $client,
+        private readonly AuthenticationKitConfig $config,
+        private readonly GooglePkceGenerator $pkceGenerator,
+        private readonly GoogleStateStoreInterface $stateStore,
+        private readonly GoogleIdTokenVerifier $idTokenVerifier,
+    ) {}
+
+    /**
+     * {@inheritDoc}
+     */
+    public function authorizationRedirect(GoogleRedirectRecord $record): GoogleRedirectData
+    {
+        $this->beforeAuthorizationRedirect($record);
+
+        $pkce = $this->pkceGenerator->generate();
+
+        $state = $record->state !== ''
+            ? $record->state
+            : $this->pkceGenerator->generateState();
+
+        $nonce = $record->nonce !== ''
+            ? $record->nonce
+            : $this->pkceGenerator->generateNonce();
+
+        $ttl = $this->config->getGoogleStateLifetime();
+
+        $stateRecord = new GoogleStateRecord(
+            code_verifier: $pkce['verifier'],
+            nonce: $nonce,
+            expires_at: time() + $ttl,
+        );
+
+        $this->stateStore->put($state, $stateRecord, $ttl);
+
+        $request = (new GoogleAuthorizationRedirectRequest)
+            ->setClientId($this->config->getGoogleClientId())
+            ->setRedirectUri($this->config->getGoogleRedirectUri())
+            ->setState($state)
+            ->setCodeChallenge($pkce['challenge'])
+            ->setNonce($nonce)
+            ->setScopes($this->config->getGoogleScopes());
+
+        $data = new GoogleRedirectData(url: $request->getUrl()->getValue());
+
+        $this->afterAuthorizationRedirect($record, $data);
+
+        return $data;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function callback(GoogleCallbackRecord $record): GoogleCallbackData
+    {
+        $this->beforeCallback($record);
+
+        if ($record->error !== null) {
+            $this->afterCallbackFailed($record, ErrorCode::GOOGLE_PROVIDER_ERROR);
+
+            throw GoogleOAuthException::tokenExchangeFailed(
+                $record->error_description ?? $record->error
+            );
+        }
+
+        $stateRecord = $this->stateStore->pull($record->state);
+
+        if ($stateRecord === null) {
+            $this->afterCallbackFailed($record, ErrorCode::GOOGLE_STATE_MISMATCH);
+
+            throw GoogleOAuthException::stateNotFound();
+        }
+
+        if ($stateRecord->expires_at < time()) {
+            $this->afterCallbackFailed($record, ErrorCode::GOOGLE_STATE_EXPIRED);
+
+            throw GoogleOAuthException::stateExpired();
+        }
+
+        $tokenRequest = (new GoogleTokenExchangeRequest)
+            ->setCode($record->code)
+            ->setClientId($this->config->getGoogleClientId())
+            ->setClientSecret($this->config->getGoogleClientSecret())
+            ->setRedirectUri($this->config->getGoogleRedirectUri())
+            ->setCodeVerifier($stateRecord->code_verifier);
+
+        /** @var GoogleTokenExchangeResponse $response */
+        $response = $this->client->post(
+            $tokenRequest->getUrl()->getValue(),
+            $tokenRequest,
+            GoogleTokenExchangeResponse::class,
+        );
+
+        $tokens = $response->getData();
+
+        $claims = $this->idTokenVerifier->verify(
+            idToken: $tokens->idToken,
+            expectedNonce: $stateRecord->nonce,
+        );
+
+        $data = new GoogleCallbackData(
+            idToken: $tokens->idToken,
+            accessToken: $tokens->accessToken,
+            expiresIn: $tokens->expiresIn,
+            tokenType: $tokens->tokenType,
+            scope: $tokens->scope,
+            claims: $claims,
+        );
+
+        $this->afterCallback($record, $data);
+
+        return $data;
+    }
+
+    // ========================================================================
+    // HOOKS
+    // ========================================================================
+
+    protected function beforeAuthorizationRedirect(GoogleRedirectRecord $record): void {}
+
+    protected function afterAuthorizationRedirect(
+        GoogleRedirectRecord $record,
+        GoogleRedirectData $data,
+    ): void {}
+
+    protected function beforeCallback(GoogleCallbackRecord $record): void {}
+
+    protected function afterCallback(
+        GoogleCallbackRecord $record,
+        GoogleCallbackData $data,
+    ): void {}
+
+    protected function afterCallbackFailed(
+        GoogleCallbackRecord $record,
+        ErrorCode $error,
+    ): void {}
+}

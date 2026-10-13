@@ -29,6 +29,18 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
 
     private const DEFAULT_COOKIE_DURATION = 525600;
 
+    private const DEFAULT_GOOGLE_AUTHORIZATION_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+
+    private const DEFAULT_GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+
+    private const DEFAULT_GOOGLE_JWKS_ENDPOINT = 'https://www.googleapis.com/oauth2/v3/certs';
+
+    private const DEFAULT_GOOGLE_SCOPES = ['openid', 'email', 'profile'];
+
+    private const DEFAULT_GOOGLE_STATE_LIFETIME = 600;
+
+    private const DEFAULT_GOOGLE_PKCE_VERIFIER_LENGTH = 64;
+
     public function __construct(
         private readonly ConfigRepository $config,
     ) {}
@@ -107,6 +119,107 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
         return (int) $this->config->get(
             'authentication-kit.cookie_duration',
             self::DEFAULT_COOKIE_DURATION
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleClientId(): string
+    {
+        return (string) $this->config->get(
+            'authentication-kit.google.client_id',
+            ''
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleClientSecret(): string
+    {
+        return (string) $this->config->get(
+            'authentication-kit.google.client_secret',
+            ''
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleRedirectUri(): string
+    {
+        return (string) $this->config->get(
+            'authentication-kit.google.redirect_uri',
+            ''
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleAuthorizationEndpoint(): string
+    {
+        return (string) $this->config->get(
+            'authentication-kit.google.authorization_endpoint',
+            self::DEFAULT_GOOGLE_AUTHORIZATION_ENDPOINT
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleTokenEndpoint(): string
+    {
+        return (string) $this->config->get(
+            'authentication-kit.google.token_endpoint',
+            self::DEFAULT_GOOGLE_TOKEN_ENDPOINT
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleJwksEndpoint(): string
+    {
+        return (string) $this->config->get(
+            'authentication-kit.google.jwks_endpoint',
+            self::DEFAULT_GOOGLE_JWKS_ENDPOINT
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleScopes(): array
+    {
+        $scopes = $this->config->get(
+            'authentication-kit.google.scopes',
+            self::DEFAULT_GOOGLE_SCOPES
+        );
+
+        return is_array($scopes) ? array_values($scopes) : self::DEFAULT_GOOGLE_SCOPES;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleStateLifetime(): int
+    {
+        return (int) $this->config->get(
+            'authentication-kit.google.state_lifetime',
+            self::DEFAULT_GOOGLE_STATE_LIFETIME
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGooglePkceVerifierLength(): int
+    {
+        return (int) $this->config->get(
+            'authentication-kit.google.pkce_verifier_length',
+            self::DEFAULT_GOOGLE_PKCE_VERIFIER_LENGTH
         );
     }
 }
