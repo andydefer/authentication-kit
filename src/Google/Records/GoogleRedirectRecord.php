@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Google\Records;
 
+use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 
 final class GoogleRedirectRecord extends AbstractRecord
@@ -12,5 +13,6 @@ final class GoogleRedirectRecord extends AbstractRecord
         public readonly string $state,
         public readonly string $code_challenge,
         public readonly string $nonce,
+        public readonly OperationType $operation,
     ) {}
 }

@@ -9,6 +9,7 @@ use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
+use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleRedirectRecord;
@@ -93,7 +94,12 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
     public function test_authorization_redirect_returns_url(): void
     {
-        $record = new GoogleRedirectRecord(state: '', code_challenge: '', nonce: '');
+        $record = new GoogleRedirectRecord(
+            state: '',
+            code_challenge: '',
+            nonce: '',
+            operation: OperationType::LOGIN,
+        );
 
         $result = $this->service->authorizationRedirect($record);
 
@@ -102,7 +108,12 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
     public function test_authorization_redirect_includes_client_id(): void
     {
-        $record = new GoogleRedirectRecord(state: '', code_challenge: '', nonce: '');
+        $record = new GoogleRedirectRecord(
+            state: '',
+            code_challenge: '',
+            nonce: '',
+            operation: OperationType::LOGIN,
+        );
 
         $result = $this->service->authorizationRedirect($record);
 
@@ -111,7 +122,12 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
     public function test_authorization_redirect_includes_pkce_challenge(): void
     {
-        $record = new GoogleRedirectRecord(state: '', code_challenge: '', nonce: '');
+        $record = new GoogleRedirectRecord(
+            state: '',
+            code_challenge: '',
+            nonce: '',
+            operation: OperationType::REGISTER,
+        );
 
         $result = $this->service->authorizationRedirect($record);
 
@@ -125,6 +141,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             state: 'my-state',
             code_challenge: '',
             nonce: 'my-nonce',
+            operation: OperationType::REGISTER,
         );
 
         $this->service->authorizationRedirect($record);
@@ -133,6 +150,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
         $this->assertInstanceOf(GoogleStateRecord::class, $pulled);
         $this->assertSame('my-nonce', $pulled->nonce);
+        $this->assertSame(OperationType::REGISTER, $pulled->operation);
         $this->assertNotEmpty($pulled->code_verifier);
     }
 
@@ -172,6 +190,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             code_verifier: 'v',
             nonce: 'n',
             expires_at: time() - 10,
+            operation: OperationType::LOGIN,
         ), 600);
 
         $record = new GoogleCallbackRecord(code: 'code', state: 'expired-state');
@@ -188,6 +207,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             code_verifier: 'verifier-xyz',
             nonce: 'nonce-xyz',
             expires_at: time() + 600,
+            operation: OperationType::REGISTER,
         ), 600);
 
         $this->mockHandler->append(new GuzzleResponse(
@@ -219,9 +239,6 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             ->once()
             ->with('header.payload.signature', 'nonce-xyz')
             ->andReturn($claims);
-
-        // Capture the data passed to onCallbackSuccess
-        $captured = null;
 
         $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock) extends GoogleOAuthService
         {
@@ -249,6 +266,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
         $this->assertSame('Bearer', $data->tokenType);
         $this->assertSame('openid email profile', $data->scope);
         $this->assertSame('sub-123', $data->claims->sub);
+        $this->assertSame(OperationType::REGISTER, $data->operation);
     }
 
     public function test_callback_returns_response_factory_from_on_callback_success(): void
@@ -257,6 +275,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             code_verifier: 'verifier-xyz',
             nonce: 'nonce-xyz',
             expires_at: time() + 600,
+            operation: OperationType::LOGIN,
         ), 600);
 
         $this->mockHandler->append(new GuzzleResponse(
@@ -289,7 +308,6 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             ->with('header.payload.signature', 'nonce-xyz')
             ->andReturn($claims);
 
-        // Override onCallbackSuccess to return a redirect
         $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock) extends GoogleOAuthService
         {
             public function onCallbackSuccess(GoogleCallbackData $data): ResponseFactory
@@ -310,6 +328,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             code_verifier: 'v',
             nonce: 'n',
             expires_at: time() + 600,
+            operation: OperationType::LOGIN,
         ), 600);
 
         $this->assertNotNull($this->stateStore->pull('one-shot'));

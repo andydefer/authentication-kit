@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Tests\Integration\Google\Services;
 
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
+use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleStateRecord;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
 
@@ -23,11 +24,13 @@ final class GoogleStateStoreTest extends IntegrationTestCase
         string $verifier = 'verifier-xyz',
         string $nonce = 'nonce-abc',
         ?int $expiresAt = null,
+        OperationType $operation = OperationType::LOGIN,
     ): GoogleStateRecord {
         return new GoogleStateRecord(
             code_verifier: $verifier,
             nonce: $nonce,
             expires_at: $expiresAt ?? time() + 600,
+            operation: $operation,
         );
     }
 
@@ -42,6 +45,7 @@ final class GoogleStateStoreTest extends IntegrationTestCase
         $this->assertInstanceOf(GoogleStateRecord::class, $pulled);
         $this->assertSame('verifier-1', $pulled->code_verifier);
         $this->assertSame('nonce-1', $pulled->nonce);
+        $this->assertSame(OperationType::LOGIN, $pulled->operation);
         $this->assertSame($record->expires_at, $pulled->expires_at);
     }
 
@@ -72,14 +76,16 @@ final class GoogleStateStoreTest extends IntegrationTestCase
 
     public function test_two_states_are_isolated(): void
     {
-        $this->store->put('state-a', $this->makeRecord('va', 'na'), 600);
-        $this->store->put('state-b', $this->makeRecord('vb', 'nb'), 600);
+        $this->store->put('state-a', $this->makeRecord('va', 'na', operation: OperationType::LOGIN), 600);
+        $this->store->put('state-b', $this->makeRecord('vb', 'nb', operation: OperationType::REGISTER), 600);
 
         $a = $this->store->pull('state-a');
         $b = $this->store->pull('state-b');
 
         $this->assertSame('va', $a->code_verifier);
         $this->assertSame('vb', $b->code_verifier);
+        $this->assertSame(OperationType::LOGIN, $a->operation);
+        $this->assertSame(OperationType::REGISTER, $b->operation);
     }
 
     public function test_put_with_zero_ttl_clamps_to_minimum(): void

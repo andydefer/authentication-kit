@@ -9,6 +9,7 @@ use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterfa
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleCallbackAction;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
+use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleStateRecord;
 use AndyDefer\AuthenticationKit\Google\Requests\GoogleCallbackRequest;
@@ -33,7 +34,6 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        // ✅ Définir la configuration
         $this->app['config']->set('authentication-kit', [
             'token_name' => 'authentication-kit',
             'password_reset_rate_limit' => 3,
@@ -68,13 +68,10 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             'cookie_samesite' => 'lax',
         ]);
 
-        // ✅ Re-binder les services avec la config mise à jour
         $this->app->singleton(
             AuthenticationKitConfigInterface::class,
             function ($app) {
-                return new AuthenticationKitConfig(
-                    $app['config']
-                );
+                return new AuthenticationKitConfig($app['config']);
             }
         );
 
@@ -82,13 +79,10 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->app->singleton(
             AuthenticationKitConfig::class,
             function ($app) {
-                return new AuthenticationKitConfig(
-                    $app['config']
-                );
+                return new AuthenticationKitConfig($app['config']);
             }
         );
 
-        // ✅ Guzzle mock
         $this->mockHandler = new MockHandler;
         $handlerStack = HandlerStack::create($this->mockHandler);
         $guzzle = new GuzzleClient(['handler' => $handlerStack]);
@@ -96,17 +90,14 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->app->forgetInstance(ClientService::class);
         $this->app->instance(ClientService::class, new ClientService($guzzle));
 
-        // ✅ Mock du vérificateur de token
         $this->idTokenVerifierMock = Mockery::mock(GoogleIdTokenVerifier::class);
         $this->app->instance(GoogleIdTokenVerifier::class, $this->idTokenVerifierMock);
 
-        // ✅ Reconstruire les services dépendants
         $this->app->forgetInstance(GoogleStateStoreInterface::class);
         $this->app->forgetInstance(GooglePkceGenerator::class);
         $this->app->forgetInstance(GoogleOAuthService::class);
         $this->app->forgetInstance(GoogleCallbackAction::class);
 
-        // ✅ Enregistrer la route
         $this->app['router']->get('/api/google-callback', action_route(
             GoogleCallbackRequest::class,
             GoogleCallbackAction::class
@@ -123,8 +114,9 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
     // Helpers
     // ============================================================================
 
-    private function prepareValidState(): void
-    {
+    private function prepareValidState(
+        OperationType $operation = OperationType::LOGIN,
+    ): void {
         /** @var GoogleStateStoreInterface $store */
         $store = $this->app->make(GoogleStateStoreInterface::class);
 
@@ -132,6 +124,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             code_verifier: 'verifier-xyz',
             nonce: 'nonce-xyz',
             expires_at: time() + 600,
+            operation: $operation,
         ), 600);
     }
 
@@ -194,6 +187,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             'tokenType',
             'scope',
             'claims',
+            'operation',
         ]);
     }
 
@@ -233,6 +227,36 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertJsonPath('claims.sub', 'sub-123');
         $response->assertJsonPath('claims.email', 'user@example.com');
         $response->assertJsonPath('claims.emailVerified', true);
+    }
+
+    public function test_callback_returns_operation_login(): void
+    {
+        $this->prepareValidState(OperationType::LOGIN);
+        $this->queueTokenExchangeSuccess();
+        $this->configureValidIdTokenVerifier();
+
+        $response = $this->getJson('/api/google-callback?'.http_build_query([
+            'code' => 'auth-code',
+            'state' => 'valid-state',
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('operation', OperationType::LOGIN->value);
+    }
+
+    public function test_callback_returns_operation_register(): void
+    {
+        $this->prepareValidState(OperationType::REGISTER);
+        $this->queueTokenExchangeSuccess();
+        $this->configureValidIdTokenVerifier();
+
+        $response = $this->getJson('/api/google-callback?'.http_build_query([
+            'code' => 'auth-code',
+            'state' => 'valid-state',
+        ]));
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('operation', OperationType::REGISTER->value);
     }
 
     // ============================================================================
@@ -292,6 +316,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             code_verifier: 'v',
             nonce: 'n',
             expires_at: time() - 10,
+            operation: OperationType::LOGIN,
         ), 600);
 
         $response = $this->getJson('/api/google-callback?'.http_build_query([
@@ -417,7 +442,6 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
 
-        // First call: succeeds
         $first = $this->getJson('/api/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
@@ -425,7 +449,6 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
 
         $first->assertStatus(200);
 
-        // Second call with the same state: fails because state was consumed
         $second = $this->getJson('/api/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',

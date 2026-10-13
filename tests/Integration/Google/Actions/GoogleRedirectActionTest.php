@@ -8,6 +8,7 @@ use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleRedirectAction;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
+use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\AuthenticationKit\Google\Requests\GoogleRedirectRequest;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleOAuthService;
 use AndyDefer\AuthenticationKit\Google\Services\GooglePkceGenerator;
@@ -19,7 +20,6 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        // ✅ Définir la configuration
         $this->app['config']->set('authentication-kit', [
             'token_name' => 'authentication-kit',
             'password_reset_rate_limit' => 3,
@@ -54,7 +54,6 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'cookie_samesite' => 'lax',
         ]);
 
-        // ✅ Re-binder le service avec la config
         $this->app->singleton(
             AuthenticationKitConfigInterface::class,
             function ($app) {
@@ -64,7 +63,6 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             }
         );
 
-        // ✅ Reconstruire les services dépendants de la config
         $this->app->forgetInstance(AuthenticationKitConfig::class);
         $this->app->singleton(
             AuthenticationKitConfig::class,
@@ -80,7 +78,6 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
         $this->app->forgetInstance(GoogleOAuthService::class);
         $this->app->forgetInstance(GoogleRedirectAction::class);
 
-        // ✅ Enregistrer la route
         $this->app['router']->post('/api/google-redirect', action_route(
             GoogleRedirectRequest::class,
             GoogleRedirectAction::class
@@ -97,6 +94,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -111,6 +109,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -130,6 +129,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -147,6 +147,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -164,6 +165,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -179,6 +181,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -193,6 +196,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -207,6 +211,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -221,6 +226,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -239,6 +245,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => 'my-custom-state',
             'code_challenge' => '',
             'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -253,6 +260,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => '',
             'code_challenge' => '',
             'nonce' => 'my-custom-nonce',
+            'operation' => OperationType::LOGIN->value,
         ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
@@ -262,23 +270,75 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
     }
 
     // ============================================================================
-    // Tests d'erreur
+    // Tests de l'opération
     // ============================================================================
 
-    public function test_redirect_handles_empty_payload_gracefully(): void
+    public function test_redirect_returns_validation_error_when_operation_is_missing(): void
     {
-        $payload = [];
+        $payload = [
+            'state' => '',
+            'code_challenge' => '',
+            'nonce' => '',
+        ];
 
         $response = $this->postJson('/api/google-redirect', $payload);
 
-        // Even with empty payload, the service must generate state and nonce
-        $response->assertStatus(200);
-        $response->assertJsonStructure(['url']);
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['operation']);
     }
+
+    public function test_redirect_returns_validation_error_when_operation_is_invalid(): void
+    {
+        $payload = [
+            'state' => '',
+            'code_challenge' => '',
+            'nonce' => '',
+            'operation' => 'not_a_valid_operation',
+        ];
+
+        $response = $this->postJson('/api/google-redirect', $payload);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['operation']);
+    }
+
+    public function test_redirect_accepts_login_operation(): void
+    {
+        $payload = [
+            'state' => '',
+            'code_challenge' => '',
+            'nonce' => '',
+            'operation' => OperationType::LOGIN->value,
+        ];
+
+        $response = $this->postJson('/api/google-redirect', $payload);
+
+        $response->assertStatus(200);
+    }
+
+    public function test_redirect_accepts_register_operation(): void
+    {
+        $payload = [
+            'state' => '',
+            'code_challenge' => '',
+            'nonce' => '',
+            'operation' => OperationType::REGISTER->value,
+        ];
+
+        $response = $this->postJson('/api/google-redirect', $payload);
+
+        $response->assertStatus(200);
+    }
+
+    // ============================================================================
+    // Tests de génération
+    // ============================================================================
 
     public function test_redirect_generates_unique_state_on_each_call(): void
     {
-        $payload = [];
+        $payload = [
+            'operation' => OperationType::LOGIN->value,
+        ];
 
         $first = $this->postJson('/api/google-redirect', $payload)->json('url');
         $second = $this->postJson('/api/google-redirect', $payload)->json('url');
@@ -288,17 +348,22 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
 
     public function test_redirect_generates_unique_nonce_on_each_call(): void
     {
-        $payload = [];
+        $payload = [
+            'operation' => OperationType::LOGIN->value,
+        ];
 
         $first = $this->postJson('/api/google-redirect', $payload)->json('url');
         $second = $this->postJson('/api/google-redirect', $payload)->json('url');
 
-        // Extract nonce from both URLs and assert they differ
         preg_match('/nonce=([^&]+)/', $first, $matchesFirst);
         preg_match('/nonce=([^&]+)/', $second, $matchesSecond);
 
         $this->assertNotSame($matchesFirst[1] ?? null, $matchesSecond[1] ?? null);
     }
+
+    // ============================================================================
+    // Tests du state store
+    // ============================================================================
 
     public function test_redirect_stores_state_for_later_use(): void
     {
@@ -306,6 +371,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
             'state' => 'stored-state',
             'code_challenge' => '',
             'nonce' => 'stored-nonce',
+            'operation' => OperationType::REGISTER->value,
         ];
 
         $this->postJson('/api/google-redirect', $payload);
@@ -317,6 +383,7 @@ final class GoogleRedirectActionTest extends IntegrationTestCase
 
         $this->assertNotNull($stateRecord);
         $this->assertSame('stored-nonce', $stateRecord->nonce);
+        $this->assertSame(OperationType::REGISTER, $stateRecord->operation);
         $this->assertNotEmpty($stateRecord->code_verifier);
     }
 }

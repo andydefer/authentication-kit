@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Google\Records;
 
+use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 
 final class GoogleStateRecord extends AbstractRecord
@@ -12,5 +13,6 @@ final class GoogleStateRecord extends AbstractRecord
         public readonly string $code_verifier,
         public readonly string $nonce,
         public readonly int $expires_at,
+        public readonly OperationType $operation,
     ) {}
 }

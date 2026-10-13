@@ -53,6 +53,7 @@ class GoogleOAuthService implements GoogleOAuthInterface
             code_verifier: $pkce['verifier'],
             nonce: $nonce,
             expires_at: time() + $ttl,
+            operation: $record->operation,
         );
 
         $this->stateStore->put($state, $stateRecord, $ttl);
@@ -131,6 +132,7 @@ class GoogleOAuthService implements GoogleOAuthInterface
             tokenType: $tokens->tokenType,
             scope: $tokens->scope,
             claims: $claims,
+            operation: $stateRecord->operation,
         );
 
         $this->afterCallback($record, $data);
