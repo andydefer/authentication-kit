@@ -7,6 +7,7 @@ namespace AndyDefer\AuthenticationKit;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Contracts\Services\AgentInterface;
+use AndyDefer\AuthenticationKit\Google\GoogleServiceProvider;
 use AndyDefer\AuthenticationKit\Mail\MailServiceProvider;
 use AndyDefer\AuthenticationKit\Services\Agent;
 use Illuminate\Support\ServiceProvider;
@@ -45,7 +46,9 @@ final class AuthenticationKitServiceProvider extends ServiceProvider
             }
         );
 
+        // ✅ Register sub-providers
         $this->app->register(MailServiceProvider::class);
+        $this->app->register(GoogleServiceProvider::class);
     }
 
     public function boot(): void

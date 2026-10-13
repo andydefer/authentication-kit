@@ -13,13 +13,10 @@ use AndyDefer\PhpClient\ValueObjects\UrlVO;
 
 final class EmptyRequest extends Request
 {
-    private string $targetUrl = '';
-
-    public function setUrlValue(string $url): self
-    {
-        $this->targetUrl = $url;
-
-        return $this;
+    public function __construct(
+        private readonly string $targetUrl,
+    ) {
+        parent::__construct();
     }
 
     protected function setMethod(): HttpMethod

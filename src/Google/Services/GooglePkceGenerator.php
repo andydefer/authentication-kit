@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Google\Services;
 
-use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 
 final class GooglePkceGenerator
 {
     public function __construct(
-        private readonly AuthenticationKitConfig $config,
+        private readonly AuthenticationKitConfigInterface $config,
     ) {}
 
     /**

@@ -56,13 +56,14 @@ class GoogleOAuthService implements GoogleOAuthInterface
 
         $this->stateStore->put($state, $stateRecord, $ttl);
 
-        $request = (new GoogleAuthorizationRedirectRequest)
-            ->setClientId($this->config->getGoogleClientId())
-            ->setRedirectUri($this->config->getGoogleRedirectUri())
-            ->setState($state)
-            ->setCodeChallenge($pkce['challenge'])
-            ->setNonce($nonce)
-            ->setScopes($this->config->getGoogleScopes());
+        $request = new GoogleAuthorizationRedirectRequest(
+            clientId: $this->config->getGoogleClientId(),
+            redirectUri: $this->config->getGoogleRedirectUri(),
+            state: $state,
+            codeChallenge: $pkce['challenge'],
+            nonce: $nonce,
+            scopes: $this->config->getGoogleScopes(),
+        );
 
         $data = new GoogleRedirectData(url: $request->getUrl()->getValue());
 
@@ -81,7 +82,7 @@ class GoogleOAuthService implements GoogleOAuthInterface
         if ($record->error !== null) {
             $this->afterCallbackFailed($record, ErrorCode::GOOGLE_PROVIDER_ERROR);
 
-            throw GoogleOAuthException::tokenExchangeFailed(
+            throw GoogleOAuthException::providerError(
                 $record->error_description ?? $record->error
             );
         }
@@ -100,12 +101,13 @@ class GoogleOAuthService implements GoogleOAuthInterface
             throw GoogleOAuthException::stateExpired();
         }
 
-        $tokenRequest = (new GoogleTokenExchangeRequest)
-            ->setCode($record->code)
-            ->setClientId($this->config->getGoogleClientId())
-            ->setClientSecret($this->config->getGoogleClientSecret())
-            ->setRedirectUri($this->config->getGoogleRedirectUri())
-            ->setCodeVerifier($stateRecord->code_verifier);
+        $tokenRequest = new GoogleTokenExchangeRequest(
+            code: $record->code,
+            clientId: $this->config->getGoogleClientId(),
+            clientSecret: $this->config->getGoogleClientSecret(),
+            redirectUri: $this->config->getGoogleRedirectUri(),
+            codeVerifier: $stateRecord->code_verifier,
+        );
 
         /** @var GoogleTokenExchangeResponse $response */
         $response = $this->client->post(

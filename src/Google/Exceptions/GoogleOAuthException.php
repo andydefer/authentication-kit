@@ -8,6 +8,21 @@ use RuntimeException;
 
 final class GoogleOAuthException extends RuntimeException
 {
+    private bool $providerError = false;
+
+    public function isProviderError(): bool
+    {
+        return $this->providerError;
+    }
+
+    public static function providerError(string $reason): self
+    {
+        $exception = new self($reason);
+        $exception->providerError = true;
+
+        return $exception;
+    }
+
     public static function stateNotFound(): self
     {
         return new self('Google OAuth state not found');

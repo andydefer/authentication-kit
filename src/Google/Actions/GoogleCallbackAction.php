@@ -7,16 +7,16 @@ namespace AndyDefer\AuthenticationKit\Google\Actions;
 use AndyDefer\Actions\Actions\AbstractAction;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
-use AndyDefer\AuthenticationKit\Google\Services\GoogleOAuthService;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
 use Exception;
 
 final class GoogleCallbackAction extends AbstractAction
 {
     public function __construct(
-        private readonly GoogleOAuthService $googleOAuth,
+        private readonly GoogleOAuthInterface $googleOAuth,
     ) {}
 
     protected function before(AbstractRecord $record): void
@@ -37,6 +37,12 @@ final class GoogleCallbackAction extends AbstractAction
                 $this->googleOAuth->callback($record)
             );
         } catch (GoogleOAuthException $e) {
+            if ($e->isProviderError()) {
+                return ErrorCode::GOOGLE_PROVIDER_ERROR->toJsonResponseFactory(
+                    message: $e->getMessage(),
+                );
+            }
+
             return ErrorCode::GOOGLE_CALLBACK_ERROR->toJsonResponseFactory(
                 message: $e->getMessage(),
             );

@@ -14,49 +14,14 @@ use AndyDefer\PhpClient\ValueObjects\UrlVO;
 
 final class GoogleTokenExchangeRequest extends Request
 {
-    private string $code = '';
-
-    private string $clientId = '';
-
-    private string $clientSecret = '';
-
-    private string $redirectUri = '';
-
-    private string $codeVerifier = '';
-
-    public function setCode(string $code): self
-    {
-        $this->code = $code;
-
-        return $this;
-    }
-
-    public function setClientId(string $clientId): self
-    {
-        $this->clientId = $clientId;
-
-        return $this;
-    }
-
-    public function setClientSecret(string $clientSecret): self
-    {
-        $this->clientSecret = $clientSecret;
-
-        return $this;
-    }
-
-    public function setRedirectUri(string $redirectUri): self
-    {
-        $this->redirectUri = $redirectUri;
-
-        return $this;
-    }
-
-    public function setCodeVerifier(string $codeVerifier): self
-    {
-        $this->codeVerifier = $codeVerifier;
-
-        return $this;
+    public function __construct(
+        private readonly string $code,
+        private readonly string $clientId,
+        private readonly string $clientSecret,
+        private readonly string $redirectUri,
+        private readonly string $codeVerifier,
+    ) {
+        parent::__construct();
     }
 
     protected function setMethod(): HttpMethod

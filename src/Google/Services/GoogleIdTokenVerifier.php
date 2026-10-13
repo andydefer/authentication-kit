@@ -11,7 +11,7 @@ use AndyDefer\AuthenticationKit\Google\Requests\EmptyRequest;
 use AndyDefer\AuthenticationKit\Google\Responses\GoogleJwksResponse;
 use AndyDefer\PhpClient\Clients\ClientService;
 
-final class GoogleIdTokenVerifier
+class GoogleIdTokenVerifier
 {
     private const ALLOWED_ISSUERS = [
         'https://accounts.google.com',
@@ -100,8 +100,7 @@ final class GoogleIdTokenVerifier
 
     private function resolvePublicKey(string $kid): \OpenSSLAsymmetricKey
     {
-        $request = (new EmptyRequest)
-            ->setUrlValue($this->config->getGoogleJwksEndpoint());
+        $request = new EmptyRequest($this->config->getGoogleJwksEndpoint());
 
         /** @var GoogleJwksResponse $response */
         $response = $this->client->get(

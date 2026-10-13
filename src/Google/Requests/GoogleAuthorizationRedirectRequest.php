@@ -15,61 +15,18 @@ use AndyDefer\PhpClient\ValueObjects\UrlVO;
 
 final class GoogleAuthorizationRedirectRequest extends Request
 {
-    private string $clientId = '';
-
-    private string $redirectUri = '';
-
-    private string $state = '';
-
-    private string $codeChallenge = '';
-
-    private string $nonce = '';
-
-    private array $scopes = ['openid', 'email', 'profile'];
-
-    public function setClientId(string $clientId): self
-    {
-        $this->clientId = $clientId;
-
-        return $this;
-    }
-
-    public function setRedirectUri(string $redirectUri): self
-    {
-        $this->redirectUri = $redirectUri;
-
-        return $this;
-    }
-
-    public function setState(string $state): self
-    {
-        $this->state = $state;
-
-        return $this;
-    }
-
-    public function setCodeChallenge(string $codeChallenge): self
-    {
-        $this->codeChallenge = $codeChallenge;
-
-        return $this;
-    }
-
-    public function setNonce(string $nonce): self
-    {
-        $this->nonce = $nonce;
-
-        return $this;
-    }
-
     /**
      * @param  array<int, string>  $scopes
      */
-    public function setScopes(array $scopes): self
-    {
-        $this->scopes = $scopes;
-
-        return $this;
+    public function __construct(
+        private readonly string $clientId,
+        private readonly string $redirectUri,
+        private readonly string $state,
+        private readonly string $codeChallenge,
+        private readonly string $nonce,
+        private readonly array $scopes = ['openid', 'email', 'profile'],
+    ) {
+        parent::__construct();
     }
 
     protected function setMethod(): HttpMethod
