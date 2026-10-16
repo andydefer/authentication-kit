@@ -11,7 +11,7 @@
     ],
     "require": {
         "php": "^8.1",
-        "andydefer/directive-forge": "^2.17.110",
+        "andydefer/directive-forge": "^2.17.111",
         "andydefer/laravel-otp": "^1.3.18",
         "andydefer/laravel-notification": "^1.19.21"
     },
