@@ -58,6 +58,7 @@ enum ErrorCode: string implements ErrorDescribable
     // Google OAuth
     case GOOGLE_REDIRECT_ERROR = 'GOOGLE_REDIRECT_ERROR';
     case GOOGLE_CALLBACK_ERROR = 'GOOGLE_CALLBACK_ERROR';
+    case GOOGLE_CALLBACK_UNEXPECTED_ERROR = 'GOOGLE_CALLBACK_UNEXPECTED_ERROR';
     case GOOGLE_STATE_MISMATCH = 'GOOGLE_STATE_MISMATCH';
     case GOOGLE_STATE_EXPIRED = 'GOOGLE_STATE_EXPIRED';
     case GOOGLE_PROVIDER_ERROR = 'GOOGLE_PROVIDER_ERROR';
@@ -113,7 +114,8 @@ enum ErrorCode: string implements ErrorDescribable
             self::AUTHENTICATABLE_NOT_FOUND => HttpStatusCode::NOT_FOUND,
 
             self::GOOGLE_REDIRECT_ERROR,
-            self::GOOGLE_CALLBACK_ERROR => HttpStatusCode::INTERNAL_SERVER_ERROR,
+            self::GOOGLE_CALLBACK_ERROR,
+            self::GOOGLE_CALLBACK_UNEXPECTED_ERROR => HttpStatusCode::INTERNAL_SERVER_ERROR,
         };
     }
 
@@ -162,6 +164,7 @@ enum ErrorCode: string implements ErrorDescribable
 
             self::GOOGLE_REDIRECT_ERROR => 'An error occurred while building the Google authorization URL',
             self::GOOGLE_CALLBACK_ERROR => 'An error occurred during Google authentication',
+            self::GOOGLE_CALLBACK_UNEXPECTED_ERROR => 'An unexpected error occurred while processing the Google callback',
             self::GOOGLE_STATE_MISMATCH => 'Google OAuth state mismatch',
             self::GOOGLE_STATE_EXPIRED => 'Google OAuth state has expired',
             self::GOOGLE_PROVIDER_ERROR => 'Google returned an error',
