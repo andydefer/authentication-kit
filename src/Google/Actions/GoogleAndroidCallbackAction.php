@@ -5,36 +5,29 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Google\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
-use AndyDefer\Actions\Enums\HttpResponseType;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleAndroidCallbackData;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleAndroidCallbackRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\Nemesis\Datas\ErrorResponseData;
 use Exception;
 use GuzzleHttp\Exception\GuzzleException;
 use Throwable;
-use UnexpectedValueException;
 
 /**
- * Handles the Google Android callback: the client already holds an
- * id_token (Credential Manager), sends it to /google-android-callback,
- * and receives a JSON response.
+ * Handles the Google Android callback (ID-token-only flow).
  *
- * Unlike the browser callback, this action returns JSON — Android has no
- * Web view to render. The response payload mirrors AuthAndroidGoogleData
- * on the Kotlin side.
+ * The action delegates verification and user/token resolution to the
+ * service, then returns the resulting JSON payload.
+ *
+ * The action NEVER throws to produce a response: every failure path
+ * returns a ResponseFactory.
  */
 final class GoogleAndroidCallbackAction extends AbstractAction
 {
-    /**
-     * Response types allowed for an Android callback.
-     */
-    private const ALLOWED_RESPONSE_TYPES = [
-        HttpResponseType::JSON,
-    ];
-
     public function __construct(
         private readonly GoogleOAuthInterface $googleOAuth,
     ) {}
@@ -59,26 +52,13 @@ final class GoogleAndroidCallbackAction extends AbstractAction
         }
 
         try {
-            $response = $this->googleOAuth->androidCallback($record);
-
-            if (! in_array($response->getType(), self::ALLOWED_RESPONSE_TYPES, true)) {
-                throw new UnexpectedValueException(sprintf(
-                    'GoogleOAuthInterface::androidCallback() must return a JSON response, got "%s".',
-                    $response->getType()->value,
-                ));
-            }
-
-            return $response;
+            $result = $this->googleOAuth->androidCallback($record);
         } catch (GoogleOAuthException $e) {
             $code = $e->isProviderError()
                 ? ErrorCode::GOOGLE_PROVIDER_ERROR
                 : ErrorCode::GOOGLE_CALLBACK_ERROR;
 
             return $code->toJsonResponseFactory(message: $e->getMessage());
-        } catch (UnexpectedValueException $e) {
-            return ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR->toJsonResponseFactory(
-                message: $e->getMessage(),
-            );
         } catch (Exception $e) {
             $code = $this->isHttpClientFailure($e)
                 ? ErrorCode::GOOGLE_CALLBACK_ERROR
@@ -86,12 +66,19 @@ final class GoogleAndroidCallbackAction extends AbstractAction
 
             return $code->toJsonResponseFactory(message: $e->getMessage());
         }
+
+        return match (true) {
+            $result instanceof ErrorResponseData => ResponseFactory::json($result, $result->status),
+            $result instanceof GoogleAndroidCallbackData => ResponseFactory::json($result),
+            default => ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR->toJsonResponseFactory(
+                message: 'GoogleOAuthInterface::androidCallback() returned an unexpected type.',
+            ),
+        };
     }
 
     /**
      * Whether the given throwable (or one of its causes) is a Guzzle
-     * HTTP failure. Handles the case where the HTTP client wraps the
-     * underlying Guzzle exception into a generic RuntimeException.
+     * HTTP failure.
      */
     private function isHttpClientFailure(Throwable $exception): bool
     {

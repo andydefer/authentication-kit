@@ -2,7 +2,7 @@
 
 ## Description
 
-Action HTTP qui traite le callback Android du flow OAuth Google. Elle reçoit un `id_token` obtenu par Credential Manager, délègue la vérification et l'émission de token au `GoogleOAuthService`, et renvoie **exclusivement** une réponse JSON.
+Action HTTP qui traite le callback Google du flow **Android ID-token-only**. Elle délègue la vérification et la résolution utilisateur/token au service, puis produit une réponse **JSON** contenant soit les données de succès, soit une erreur normalisée.
 
 ## Hiérarchie / Implémentations
 
@@ -19,13 +19,14 @@ Dépendances injectées :
 
 Cette action est le point d'entrée HTTP du flow **ID-token-only** côté Android. Elle :
 
-1. Vérifie que le record reçu est bien un `GoogleAndroidCallbackRecord`.
-2. Délègue la logique au `GoogleOAuthService::androidCallback()`.
-3. **Impose** que la réponse produite soit de type `JSON` — toute autre réponse (VIEW, INERTIA, REDIRECT, …) est rejetée.
-4. Convertit les exceptions en réponse JSON standardisée avec `ErrorResponseData` normalisé.
-5. Distingue les erreurs métier (`GoogleOAuthException`) des erreurs techniques (`UnexpectedValueException`, `GuzzleException`, `Exception` générique).
+1. Vérifie que le record reçu est bien un `GoogleAndroidCallbackRecord` (défense en profondeur via `before()` puis re-vérification dans `handle()`).
+2. Délègue la vérification de l'`id_token` et la résolution utilisateur/token au `GoogleOAuthService::androidCallback()`.
+3. Traduit le résultat en réponse JSON :
+   - `GoogleAndroidCallbackData` → `ResponseFactory::json()` avec statut `200`.
+   - `ErrorResponseData` → `ResponseFactory::json()` avec le statut porté par l'`ErrorResponseData` (400, 500, etc.).
+4. Convertit **toute exception** en `ResponseFactory::json()` d'erreur normalisée (jamais de throw propagé).
 
-Contrairement à `GoogleCallbackAction`, cette action **ne rend jamais de page** : Android n'a pas de WebView pour l'afficher.
+Contrairement à `GoogleCallbackAction` (web flow), cette action **ne rend jamais de page** : le client Android consomme exclusivement du JSON.
 
 ## Installation
 
@@ -63,7 +64,7 @@ Point d'entrée hérité de `AbstractAction`. Exécute le cycle `before() → ha
 
 **Retourne :** `ResponseFactory` — toujours de type `JSON`.
 
-**Exceptions :** `InvalidArgumentException` — si `$record` n'est pas un `GoogleAndroidCallbackRecord` (levé dans `before()` avant toute autre logique).
+**Exceptions :** `InvalidArgumentException` — si `$record` n'est pas un `GoogleAndroidCallbackRecord` (levé dans `before()` **avant** `handle()`).
 
 **Exemple :**
 
@@ -78,7 +79,7 @@ use AndyDefer\AuthenticationKit\Google\Records\GoogleAndroidCallbackRecord;
 /** @var GoogleAndroidCallbackAction $action */
 $record = new GoogleAndroidCallbackRecord(
     model_type: \App\Models\User::class,
-    id_token: 'fake.jwt.token',
+    id_token: 'eyJhbGciOiJSUzI1NiIs...',
 );
 
 $factory = $action->run($record);
@@ -91,16 +92,24 @@ Méthode protégée implémentée par l'action. Le contrat : produire une répon
 
 **Comportement observable :**
 
-- Succès → retourne directement la `ResponseFactory` produite par le service (déjà validée `JSON`).
-- `GoogleOAuthException` avec `isProviderError() === true` → `GOOGLE_PROVIDER_ERROR`.
-- `GoogleOAuthException` autre → `GOOGLE_CALLBACK_ERROR`.
-- `UnexpectedValueException` (type de réponse invalide) → `GOOGLE_CALLBACK_UNEXPECTED_ERROR`.
-- `GuzzleException` directe ou encapsulée (≤ 5 niveaux) → `GOOGLE_CALLBACK_ERROR`.
-- Autres `Exception` → `GOOGLE_CALLBACK_UNEXPECTED_ERROR`.
+| Résultat de `androidCallback()` | Réponse produite |
+|---|---|
+| `GoogleAndroidCallbackData` | `ResponseFactory::json($data)` — statut `200` |
+| `ErrorResponseData` | `ResponseFactory::json($error, $error->status)` — statut porté par l'erreur |
+| Autre type | `ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR->toJsonResponseFactory()` — statut `500` |
+
+**Gestion des exceptions :**
+
+| Exception | ErrorCode | Statut |
+|---|---|---|
+| `GoogleOAuthException` avec `isProviderError() === true` | `GOOGLE_PROVIDER_ERROR` | `400` |
+| `GoogleOAuthException` autre | `GOOGLE_CALLBACK_ERROR` | `500` |
+| `GuzzleException` (directe ou encapsulée ≤ 5 niveaux) | `GOOGLE_CALLBACK_ERROR` | `500` |
+| Autre `Exception` | `GOOGLE_CALLBACK_UNEXPECTED_ERROR` | `500` |
 
 ## Cas d'utilisation
 
-### Cas 1 : Route POST `/google-android-callback`
+### Cas 1 : Route POST `/api/google-android-callback`
 
 ```php
 <?php
@@ -120,7 +129,7 @@ Route::post(
 Requête Android :
 
 ```json
-POST /google-android-callback
+POST /api/google-android-callback
 Content-Type: application/json
 
 {
@@ -129,64 +138,87 @@ Content-Type: application/json
 }
 ```
 
-Réponse (200) :
+Réponse succès (200) :
 
 ```json
 {
-    "message": "Login successful",
-    "auth": { "id": 61, "name": "Andy Kani", "email": "..." },
-    "token": "plain-nemesis-token",
+    "claims": { "sub": "…", "email": "…", "emailVerified": true, "…": "…" },
     "modelType": "App\\Models\\User",
+    "auth": { "id": 42, "email": "user@example.com" },
+    "token": "plain-nemesis-token",
     "isNewUser": false,
-    "claims": { "sub": "…", "email": "…", "emailVerified": true, … }
+    "metadata": {}
 }
 ```
 
-### Cas 2 : Erreur métier — mauvais modèle
+### Cas 2 : `ErrorResponseData` retourné par le service
 
-Requête :
+Le service applicatif peut retourner directement un `ErrorResponseData` (cas nominal pour les erreurs métier) :
 
-```json
-POST /google-android-callback
+```php
+<?php
 
+declare(strict_types=1);
+
+// Dans une sous-classe de GoogleOAuthService
+public function onAndroidCallbackSuccess(GoogleAndroidCallbackVO $vo): GoogleAndroidCallbackData|ErrorResponseData
 {
-    "model_type": "App\\Models\\Something",
-    "id_token": "eyJhbGciOiJSUzI1NiIs..."
+    if (/* condition métier */) {
+        return ErrorCode::GOOGLE_CALLBACK_ERROR->toResponseData(
+            message: 'Cannot proceed for this domain',
+        );
+    }
+
+    // ...
 }
 ```
 
-Réponse (400) :
+Réponse (500, statut porté par `GOOGLE_CALLBACK_ERROR`) :
 
 ```json
 {
-    "message": "The specified model_type must implement GoogleAuthenticatable to handle the Android flow",
-    "status": 400,
+    "message": "Cannot proceed for this domain",
+    "status": 500,
     "errorCode": "GOOGLE_CALLBACK_ERROR",
     "errors": null
 }
 ```
 
-### Cas 3 : Erreur technique — service retourne une page
+L'action transmet tel quel le statut HTTP de l'`ErrorResponseData`.
 
-Si un override de `GoogleOAuthService::onAndroidCallbackSuccess()` retourne une `VIEW`, l'action transforme la réponse :
+### Cas 3 : `GoogleOAuthException` levée par le service ou un hook
 
-```json
-{
-    "message": "GoogleOAuthInterface::androidCallback() must return a JSON response, got \"view\".",
-    "status": 500,
-    "errorCode": "GOOGLE_CALLBACK_UNEXPECTED_ERROR",
-    "errors": null
-}
+Un override peut lever une `GoogleOAuthException` (par exemple `providerError`) si le flow métier détecte une erreur venant de Google côté service :
+
+```php
+throw GoogleOAuthException::providerError('access_denied');
 ```
 
-L'override fautif est immédiatement détectable via ce message.
+L'action produit une réponse `GOOGLE_PROVIDER_ERROR` (statut `400`), sans faire remonter l'exception au client.
+
+### Cas 4 : Échec HTTP Google (`GuzzleException`)
+
+Si `ClientService::post()` lève une `ConnectException`, l'action classe la réponse comme `GOOGLE_CALLBACK_ERROR` (500), avec le message d'origine.
+
+### Cas 5 : `GuzzleException` encapsulée dans une `RuntimeException`
+
+Le client HTTP peut encapsuler l'exception Guzzle dans une `RuntimeException`. L'action parcourt `getPrevious()` jusqu'à **5 niveaux** pour identifier la cause réelle :
+
+```php
+try {
+    // ...
+} catch (RuntimeException $e) {
+    // $e->getPrevious() est une ConnectException
+    // → GOOGLE_CALLBACK_ERROR au lieu de UNEXPECTED
+}
+```
 
 ## Flux d'exécution
 
 ```
 run($record)
     ↓
-before($record)                             ← garde-fou de type (InvalidArgumentException)
+before($record)                    ← garde-fou de type (InvalidArgumentException)
     ↓
 handle($record)
     ↓
@@ -194,37 +226,40 @@ instanceof GoogleAndroidCallbackRecord ? ── non ──→ INVALID_RECORD_TYP
     ↓ oui
 googleOAuth->androidCallback($record)
     ↓
-getType() === JSON ? ── non ──→ throw UnexpectedValueException
-    ↓ oui
-return $response
+┌─────────────────────────────────────┐
+│  Résultat attendu                   │
+└─────────────────────────────────────┘
+    ├── GoogleAndroidCallbackData → json(data), 200
+    ├── ErrorResponseData         → json(error, error->status)
+    └── autre                     → json(UNEXPECTED, 500)
 
-───────── catch ─────────
+───────── exceptions (throw) ─────────
 
-GoogleOAuthException       → isProviderError() ? GOOGLE_PROVIDER_ERROR : GOOGLE_CALLBACK_ERROR
-UnexpectedValueException   → GOOGLE_CALLBACK_UNEXPECTED_ERROR
-GuzzleException (niveau ≤5) → GOOGLE_CALLBACK_ERROR
-Exception                  → GOOGLE_CALLBACK_UNEXPECTED_ERROR
+GoogleOAuthException      → isProviderError() ? PROVIDER_ERROR(400) : CALLBACK_ERROR(500)
+GuzzleException (≤5)      → CALLBACK_ERROR(500)
+Autre Exception           → UNEXPECTED_ERROR(500)
 ```
 
 ## Gestion des erreurs
 
-| Situation | Exception source | ErrorCode produit |
-|-----------|------------------|-------------------|
-| Record non conforme passé à `run()` | `InvalidArgumentException` (dans `before`) | *(exception levée)* |
-| Record non conforme passé à `handle()` | — | `INVALID_RECORD_TYPE` |
-| Google renvoie une erreur | `GoogleOAuthException::providerError` | `GOOGLE_PROVIDER_ERROR` |
-| State mismatch / email non vérifié / modèle invalide | `GoogleOAuthException` autre | `GOOGLE_CALLBACK_ERROR` |
-| Service retourne un type ≠ JSON | `UnexpectedValueException` | `GOOGLE_CALLBACK_UNEXPECTED_ERROR` |
-| Échec HTTP Google (Guzzle) | `GuzzleException` (directe ou encapsulée ≤5 niveaux) | `GOOGLE_CALLBACK_ERROR` |
-| Autre exception | `Exception` | `GOOGLE_CALLBACK_UNEXPECTED_ERROR` |
+| Situation | ErrorCode | Statut HTTP |
+|---|---|---|
+| Record invalide passé à `run()` | `InvalidArgumentException` levée dans `before()` | — |
+| Record invalide passé à `handle()` | `INVALID_RECORD_TYPE` | `500` |
+| `GoogleOAuthException::providerError()` | `GOOGLE_PROVIDER_ERROR` | `400` |
+| Autre `GoogleOAuthException` | `GOOGLE_CALLBACK_ERROR` | `500` |
+| `GuzzleException` directe ou encapsulée | `GOOGLE_CALLBACK_ERROR` | `500` |
+| Autre `Exception` | `GOOGLE_CALLBACK_UNEXPECTED_ERROR` | `500` |
+| `ErrorResponseData` retourné par le service | dépend de `$error->errorCode` | `$error->status` |
+| Type de retour inattendu | `GOOGLE_CALLBACK_UNEXPECTED_ERROR` | `500` |
 
-Chaque `ErrorCode` est converti via `toJsonResponseFactory(message: ...)` en `ErrorResponseData` normalisé :
+Toutes les réponses d'erreur sont des `ErrorResponseData` normalisés :
 
 ```json
 {
     "message": "…",
     "status": 400,
-    "errorCode": "GOOGLE_CALLBACK_ERROR",
+    "errorCode": "GOOGLE_PROVIDER_ERROR",
     "errors": null
 }
 ```
@@ -232,33 +267,36 @@ Chaque `ErrorCode` est converti via `toJsonResponseFactory(message: ...)` en `Er
 ## Intégration
 
 ```
-Route POST /google-android-callback
+Route POST /api/google-android-callback
         ↓
-GoogleAndroidCallbackRequest         ← validation (model_type, id_token)
+GoogleAndroidCallbackRequest        ← validation (model_type, id_token)
         ↓
-GoogleAndroidCallbackAction          ← this
+GoogleAndroidCallbackAction         ← this
         ↓
-GoogleOAuthService (interface)       ← logique OAuth
+GoogleOAuthInterface (GoogleOAuthService)
         ↓
-GoogleIdTokenVerifier / Nemesis / Model
+GoogleIdTokenVerifier / Model / Nemesis (délégués à l'application)
+        ↓
+GoogleAndroidCallbackData | ErrorResponseData
         ↓
 ResponseFactory (JSON uniquement)
 ```
 
-L'action est **volontairement mince** : aucune logique métier n'y réside. Toute la mécanique OAuth est dans `GoogleOAuthInterface`, ce qui permet de la substituer par un mock dans les tests (voir `GoogleAndroidCallbackActionTest`).
+L'action est volontairement **mince** : aucune logique métier n'y réside. Toute la mécanique OAuth et la résolution utilisateur/token sont déléguées au service. Cela permet de substituer le service par un mock dans les tests (voir `GoogleAndroidCallbackActionTest`) ou par une implémentation applicative (ex. `AfyaGoogleOAuthService`).
 
 ## Performance
 
 - **O(1)** hors appels réseau et I/O du service.
 - Un seul appel `googleOAuth->androidCallback($record)` par requête.
-- `in_array($response->getType(), ALLOWED_RESPONSE_TYPES, true)` en O(1).
+- Un seul `match` sur le type de résultat (3 branches).
 - Recherche `GuzzleException` dans la chaîne d'exceptions bornée à 5 niveaux.
+- Aucune allocation superflue : le payload du succès est passé tel quel à `ResponseFactory::json()`.
 
 ## Compatibilité
 
 | Version PHP | Support |
 |-------------|---------|
-| PHP 8.1+    | ✅ Complet (`readonly`, enums, match) |
+| PHP 8.1+    | ✅ Complet (`readonly`, enums, `match`, type intersection) |
 | PHP 8.2+    | ✅ Complet |
 | PHP 8.5     | ✅ Complet |
 
@@ -290,25 +328,33 @@ Route::post(
 
 // 3. Réponse succès (200)
 // {
-//     "message": "Login successful",
-//     "auth": { "id": 61, "name": "…", "email": "…" },
-//     "token": "plain-nemesis-token",
+//     "claims": { "sub": "…", "email": "…", "emailVerified": true, … },
 //     "modelType": "App\\Models\\User",
+//     "auth": { "id": 42, "email": "…" },
+//     "token": "plain-nemesis-token",
 //     "isNewUser": false,
-//     "claims": { … }
+//     "metadata": {}
 // }
 
-// 4. Réponse erreur métier (400)
+// 4. Réponse provider error (400)
 // {
-//     "message": "Google email is not verified",
+//     "message": "access_denied",
 //     "status": 400,
+//     "errorCode": "GOOGLE_PROVIDER_ERROR",
+//     "errors": null
+// }
+
+// 5. Réponse callback error (500)
+// {
+//     "message": "Google OAuth state not found",
+//     "status": 500,
 //     "errorCode": "GOOGLE_CALLBACK_ERROR",
 //     "errors": null
 // }
 
-// 5. Réponse erreur technique (500)
+// 6. Réponse unexpected error (500)
 // {
-//     "message": "GoogleOAuthInterface::androidCallback() must return a JSON response, got \"view\".",
+//     "message": "GoogleOAuthInterface::androidCallback() returned an unexpected type.",
 //     "status": 500,
 //     "errorCode": "GOOGLE_CALLBACK_UNEXPECTED_ERROR",
 //     "errors": null
@@ -317,11 +363,12 @@ Route::post(
 
 ## Voir aussi
 
+- [`GoogleCallbackAction`](./GoogleCallbackAction.md) — équivalent web (rendu vue / Inertia)
 - [`GoogleOAuthService`](../Services/GoogleOAuthService.md) — implémentation par défaut du service
 - [`GoogleOAuthInterface`](../Contracts/GoogleOAuthInterface.md) — contrat du service
 - [`GoogleAndroidCallbackRecord`](../Records/GoogleAndroidCallbackRecord.md) — input de l'action
 - [`GoogleAndroidCallbackData`](../Datas/GoogleAndroidCallbackData.md) — payload de succès
 - [`GoogleAndroidCallbackRequest`](../Requests/GoogleAndroidCallbackRequest.md) — validation HTTP
-- [`GoogleCallbackAction`](./GoogleCallbackAction.md) — équivalent web (rendu de page)
-- [`ErrorResponseData`](../../../../nemesis/Datas/ErrorResponseData.md) — structure d'erreur normalisée
+- [`GoogleOAuthException`](../Exceptions/GoogleOAuthException.md) — exception unique du flow Google
 - [`ErrorCode`](../../Enums/ErrorCode.md) — catalogue des codes d'erreur
+- [`ErrorResponseData`](../../../../nemesis/Datas/ErrorResponseData.md) — structure d'erreur normalisée

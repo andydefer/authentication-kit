@@ -11,8 +11,8 @@
 7. [Le service d'authentification](#le-service-dauthentification)
 8. [Extension du service](#extension-du-service)
 9. [Actions internes](#actions-internes)
-10. [Google OAuth](#google-oauth)
-11. [Google OAuth - Android](#google-oauth---android)
+10. [Google OAuth — Web](#google-oauth---web)
+11. [Google OAuth — Android](#google-oauth---android)
 12. [Logs et journalisation](#logs-et-journalisation)
 13. [Gestion des erreurs](#gestion-des-erreurs)
 14. [Exemples d'utilisation](#exemples-dutilisation)
@@ -1257,20 +1257,20 @@ $user->save();
 
 **Réponse (200 OK) — Vue / Inertia :**
 
-La réponse est rendue par la vue Blade ou le composant Inertia configuré dans `authentication-kit.google.callback.target`, avec la prop `data` :
+La réponse est rendue par la vue Blade ou le composant Inertia configuré dans `authentication-kit.google.callback.target`, avec la prop `success` ou `error` :
 
 ```php
 // resources/views/auth/google-callback.blade.php
-// La variable $data est une instance de GoogleCallbackData
-echo $data->claims->email;
-echo $data->idToken;
+// La variable $success est une instance de GoogleCallbackData (succès)
+echo $success->claims->getEmail();
+echo $success->token;
 ```
 
-Sur Inertia, le composant reçoit la prop `data` :
+Sur Inertia, le composant reçoit la prop `success` :
 
 ```tsx
-export default function GoogleCallback({ data }: { data: GoogleCallbackData }) {
-    // data.claims.email, data.claims.name, etc.
+export default function GoogleCallback({ success }: { success: GoogleCallbackData }) {
+    // success.claims.email, success.claims.name, success.token, etc.
 }
 ```
 
@@ -1279,7 +1279,8 @@ export default function GoogleCallback({ data }: { data: GoogleCallbackData }) {
 | Cas | Type | ErrorCode |
 |-----|------|-----------|
 | Refus utilisateur | Vue avec `error` | `GOOGLE_PROVIDER_ERROR` |
-| State inconnu / expiré | Vue avec `error` | `GOOGLE_CALLBACK_ERROR` |
+| State inconnu | Vue avec `error` | `GOOGLE_STATE_MISMATCH` |
+| State expiré | Vue avec `error` | `GOOGLE_STATE_EXPIRED` |
 | Erreur token exchange | Vue avec `error` | `GOOGLE_CALLBACK_ERROR` |
 | Erreur vérification ID token | Vue avec `error` | `GOOGLE_CALLBACK_ERROR` |
 | Validation | 422 | `VALIDATION_ERROR` |
@@ -1301,18 +1302,6 @@ La prop `error` est un `ErrorResponseData` (`{ message, status, errorCode, error
 **Réponse (200 OK) — nouvel utilisateur :**
 ```json
 {
-    "message": "Registration successful",
-    "auth": {
-        "id": 62,
-        "name": "John Doe",
-        "email": "john@example.com",
-        "emailVerifiedAt": "2026-10-21T12:00:00+00:00",
-        "createdAt": "2026-10-21T12:00:00+00:00",
-        "updatedAt": "2026-10-21T12:00:00+00:00"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "modelType": "App\\Models\\User",
-    "isNewUser": true,
     "claims": {
         "sub": "108234...",
         "email": "john@example.com",
@@ -1323,19 +1312,24 @@ La prop `error` est un `ErrorResponseData` (`{ message, status, errorCode, error
         "iat": 1791890690,
         "name": "John Doe",
         "picture": "https://lh3.googleusercontent.com/..."
-    }
+    },
+    "modelType": "App\\Models\\User",
+    "auth": { "id": 62, "name": "John Doe", "email": "john@example.com" },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "isNewUser": true,
+    "metadata": {}
 }
 ```
 
 **Réponse (200 OK) — utilisateur existant :**
 ```json
 {
-    "message": "Login successful",
-    "auth": { "id": 62, "name": "John Doe", "email": "john@example.com", ... },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "claims": { ... },
     "modelType": "App\\Models\\User",
+    "auth": { "id": 62, "name": "John Doe", "email": "john@example.com" },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "isNewUser": false,
-    "claims": { ... }
+    "metadata": {}
 }
 ```
 
@@ -1345,9 +1339,8 @@ La prop `error` est un `ErrorResponseData` (`{ message, status, errorCode, error
 |-----|--------|-----------|
 | Record invalide | 500 | `INVALID_RECORD_TYPE` |
 | Email Google non vérifié | 500 | `GOOGLE_CALLBACK_ERROR` |
-| `model_type` inexistant | 400 | `GOOGLE_CALLBACK_ERROR` |
-| Modèle sans `MailAuthenticatable` | 400 | `GOOGLE_CALLBACK_ERROR` |
-| Modèle sans `GoogleAuthenticatable` | 400 | `GOOGLE_CALLBACK_ERROR` |
+| `model_type` inexistant | 400 | `GOOGLE_MODEL_NOT_FOUND` |
+| Modèle sans `MailAuthenticatable` | 400 | `GOOGLE_INVALID_MODEL` |
 | Erreur signature / JWKS | 500 | `GOOGLE_CALLBACK_ERROR` |
 | Validation | 422 | `VALIDATION_ERROR` |
 
@@ -1913,23 +1906,25 @@ public function handle(Request $request, Closure $next): Response
 
 ---
 
-## 🔵 Google OAuth
+## 🔵 Google OAuth — Web
 
-Le package inclut un flux **Authorization Code + PKCE** complet côté serveur pour Google OAuth 2.0 / OpenID Connect.
+Le flow **Authorization Code + PKCE** du package implémente les endpoints `/google-redirect` (génère l'URL) et `/google-callback` (traite le retour navigateur).
 
 ### Composants
 
 | Composant | Rôle |
 |-----------|------|
-| `GoogleOAuthService` | Orchestre le flux (URL + callback + Android) |
+| `GoogleOAuthService` | Orchestre le flow web et Android |
 | `GooglePkceGenerator` | Génère `code_verifier`, `code_challenge`, `state`, `nonce` |
 | `GoogleStateStore` | Persiste le state entre redirection et callback |
-| `GoogleIdTokenVerifier` | Vérifie cryptographiquement l'ID token (JWKS + claims) |
-| `GoogleRedirectAction` / `GoogleCallbackAction` / `GoogleAndroidCallbackAction` | Actions ADR |
-| `GoogleRedirectRequest` / `GoogleCallbackRequest` / `GoogleAndroidCallbackRequest` | Validation HTTP |
+| `GoogleIdTokenVerifier` | Vérifie cryptographiquement l'ID token (JWKS + claims), produit un `GoogleIdTokenClaimsVO` |
+| `GoogleCallbackVO` | VO passé à `onCallbackSuccess()` : tokens + claims + operation |
+| `GoogleCallbackData` | Data retournée par `onCallbackSuccess()` (auth + token + metadata) |
+| `GoogleRedirectAction` / `GoogleCallbackAction` | Actions HTTP du flow web |
+| `GoogleRedirectRequest` / `GoogleCallbackRequest` | Validation HTTP |
 | `GoogleOAuthException` | Exception unique (avec `isProviderError()`) |
 
-### Flux complet (web)
+### Flux complet
 
 ```
 1. Client → POST /api/google-redirect
@@ -1949,14 +1944,25 @@ Le package inclut un flux **Authorization Code + PKCE** complet côté serveur p
    ↓
    - Consomme le state store (usage unique)
    - POST /token à Google avec code + code_verifier
-   - Vérifie l'ID token via JWKS + claims
-   - Délègue à onCallbackSuccess() → Vue / Inertia
-
-4. La vue / le composant Inertia reçoit $data (GoogleCallbackData)
-   et peut créer/lier l'utilisateur local
+   - Vérifie l'ID token via JWKS + claims → GoogleIdTokenClaimsVO
+   - Construit un GoogleCallbackVO
+   - Délègue à onCallbackSuccess(GoogleCallbackVO) → GoogleCallbackData|ErrorResponseData
+   ↓
+   GoogleCallbackAction rend la présentation configurée :
+   - succès : view/inertia(['success' => GoogleCallbackData])
+   - erreur  : view/inertia(['error'   => ErrorResponseData])
 ```
 
-### Garanties de sécurité (web)
+### Ce que le service NE fait PAS
+
+Le service **s'arrête** à `GoogleCallbackVO` (tokens vérifiés + claims). Sont de la responsabilité de l'application, via l'override de `onCallbackSuccess()` :
+
+- Résolution / création de l'utilisateur local.
+- Génération du token Nemesis.
+- Gestion des cookies ou sessions applicatives.
+- Retour d'un `GoogleCallbackData` complet (auth + token + metadata).
+
+### Garanties de sécurité
 
 | Protection | Mécanisme |
 |------------|-----------|
@@ -1968,7 +1974,7 @@ Le package inclut un flux **Authorization Code + PKCE** complet côté serveur p
 | Signature forgée | Vérification RS256 via JWKS Google |
 | Email non vérifié | Refus si `email_verified !== true` |
 
-### Détails des composants Google
+### Détails des actions Google (web)
 
 #### `GoogleRedirectAction` - POST `/api/google-redirect`
 
@@ -1982,170 +1988,36 @@ Génère l'URL Google avec PKCE + state + nonce.
 
 #### `GoogleCallbackAction` - GET `/google-callback`
 
-Traite le callback Google (web).
+Traite le callback Google (web). **Ne retourne jamais de JSON** : toutes les erreurs sont rendues dans la vue / le composant Inertia configuré, via la prop `error`.
 
-| Cas | Status | ErrorCode |
-|-----|--------|-----------|
-| Succès | 200 | — |
-| Record invalide | 200 (vue) | `INVALID_RECORD_TYPE` |
-| Erreur Google (`access_denied`, etc.) | 200 (vue) | `GOOGLE_PROVIDER_ERROR` |
-| State inconnu / expiré | 200 (vue) | `GOOGLE_CALLBACK_ERROR` |
-| Erreur exchange / verify | 200 (vue) | `GOOGLE_CALLBACK_ERROR` |
-
-Le callback **ne retourne jamais de JSON** : toutes les erreurs sont rendues dans la vue / le composant Inertia configuré, via la prop `error`.
+| Cas | Status | Prop `error.errorCode` |
+|-----|--------|------------------------|
+| Succès | 200 | — (prop `success` présente) |
+| Record invalide | 200 | `INVALID_RECORD_TYPE` |
+| Google renvoie une erreur | 200 | `GOOGLE_PROVIDER_ERROR` |
+| State inconnu | 200 | `GOOGLE_STATE_MISMATCH` |
+| State expiré | 200 | `GOOGLE_STATE_EXPIRED` |
+| Échec token exchange | 200 | `GOOGLE_CALLBACK_ERROR` |
+| Échec vérification ID token | 200 | `GOOGLE_CALLBACK_ERROR` |
 
 ---
 
-## 🟢 Google OAuth - Android
+## 🟢 Google OAuth — Android
 
 Le flow web (Authorization Code + PKCE) exige une navigation navigateur. Les applications mobiles Android n'ont pas de WebView : elles utilisent **Credential Manager** qui retourne directement un `id_token` Google signé.
 
 Le package expose donc un **second endpoint dédié** qui accepte cet `id_token` sans code exchange, sans PKCE, sans state.
 
-### Prérequis côté modèle
+### Composants Android
 
-Le modèle cible doit implémenter **deux** interfaces :
+| Composant | Rôle |
+|-----------|------|
+| `GoogleAndroidCallbackVO` | VO passé à `onAndroidCallbackSuccess()` : claims + modelType |
+| `GoogleAndroidCallbackData` | Data retournée par `onAndroidCallbackSuccess()` (claims + modelType + auth + token + isNewUser + metadata) |
+| `GoogleAndroidCallbackAction` | Action HTTP JSON-only |
+| `GoogleAndroidCallbackRequest` | Validation HTTP (`model_type`, `id_token`) |
 
-- `MailAuthenticatable` (déjà requis pour l'authentification email)
-- `GoogleAuthenticatable` (nouveau, spécifique au flow Android)
-
-### Interface `GoogleAuthenticatable`
-
-```php
-<?php
-
-namespace AndyDefer\AuthenticationKit\Google\Contracts;
-
-use AndyDefer\AuthenticationKit\Contracts\Authenticatable;
-use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
-use Illuminate\Database\Eloquent\Model;
-
-interface GoogleAuthenticatable extends Authenticatable
-{
-    /**
-     * Create a new authenticatable from verified Google ID-token claims.
-     *
-     * The implementation decides which fields to populate (name, email,
-     * password, email_verified_at, oauth identity, ...). The service only
-     * provides the verified claims.
-     *
-     * @param  GoogleIdTokenClaimsData  $claims  Verified Google ID-token claims.
-     * @return Model&GoogleAuthenticatable The newly created model.
-     */
-    public static function androidGenerate(GoogleIdTokenClaimsData $claims): Model&GoogleAuthenticatable;
-}
-```
-
-Le service ne décide **rien** à la place du modèle : ni le mot de passe, ni `email_verified_at`, ni aucun autre champ. Toute la logique de création est déléguée à `androidGenerate()`.
-
-### Exemple : modèle User compatible Android
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace App\Models;
-
-use AndyDefer\AuthenticationKit\Google\Contracts\GoogleAuthenticatable;
-use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
-use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticationInterface;
-use AndyDefer\AuthenticationKit\Mail\Services\MailAuthenticationService;
-use AndyDefer\DomainStructures\Abstracts\AbstractData;
-use AndyDefer\PhpVo\ValueObjects\DateTimeVO;
-use App\Datas\UserData;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
-
-final class User extends Model implements MailAuthenticatable, GoogleAuthenticatable
-{
-    protected $table = 'users';
-
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'email_verified_at',
-        'provider',
-    ];
-
-    protected $hidden = ['password', 'remember_token'];
-
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
-
-    // ============================================================
-    // MailAuthenticatable
-    // ============================================================
-
-    public static function getMailAuthService(): MailAuthenticationInterface
-    {
-        return MailAuthenticationService::for(self::class);
-    }
-
-    public function getEmailVerifiedAt(): ?DateTimeVO
-    {
-        if ($this->email_verified_at === null) {
-            return null;
-        }
-
-        return new DateTimeVO($this->email_verified_at->toIso8601String());
-    }
-
-    public static function generate(array $data): Model&MailAuthenticatable
-    {
-        return self::create([
-            'name' => $data['name'],
-            'email' => strtolower($data['email']),
-            'password' => Hash::make($data['password']),
-        ]);
-    }
-
-    public function nemesisFormat(): AbstractData
-    {
-        return new UserData(
-            id: $this->id,
-            name: $this->name,
-            email: $this->email,
-            emailVerifiedAt: $this->email_verified_at?->toIso8601String(),
-            createdAt: $this->created_at?->toIso8601String(),
-            updatedAt: $this->updated_at?->toIso8601String(),
-        );
-    }
-
-    // ============================================================
-    // GoogleAuthenticatable
-    // ============================================================
-
-    public static function androidGenerate(GoogleIdTokenClaimsData $claims): Model&GoogleAuthenticatable
-    {
-        // L'application décide entièrement des champs. Ici :
-        //  - mot de passe aléatoire (l'utilisateur ne se connectera qu'avec Google)
-        //  - email marqué vérifié (Google l'a déjà vérifié)
-        //  - provider enregistré pour tracer l'origine
-        return self::create([
-            'name' => $claims->name ?? $claims->email,
-            'email' => strtolower($claims->email),
-            'password' => Hash::make(Str::random(64)),
-            'email_verified_at' => now(),
-            'provider' => 'google',
-        ]);
-    }
-}
-```
-
-> Le choix de `Hash::random(64)`, `email_verified_at => now()` et `provider => 'google'` appartient **entièrement** au modèle. Un autre modèle peut très bien :
->
-> - laisser `password = null` si la colonne est nullable ;
-> - ne pas marquer `email_verified_at` (laisser l'email à revérifier) ;
-> - stocker les claims (`sub`, `picture`, `locale`) dans une table OAuth identity séparée ;
-> - assigner des rôles par défaut ;
-> - refuser la création et lever une exception métier.
+Le service vérifie l'`id_token` et la conformité du `model_type`, produit un `GoogleAndroidCallbackVO` et délègue la décision métier (`login` ou `register`) à `onAndroidCallbackSuccess()`. **Aucune interface supplémentaire n'est imposée au modèle** : c'est l'application qui décide comment créer/retrouver l'utilisateur et émettre le token.
 
 ### Route Android
 
@@ -2178,18 +2050,6 @@ Content-Type: application/json
 **Réponse (200 OK) — nouvel utilisateur :**
 ```json
 {
-    "message": "Registration successful",
-    "auth": {
-        "id": 62,
-        "name": "John Doe",
-        "email": "john@example.com",
-        "emailVerifiedAt": "2026-10-21T12:00:00+00:00",
-        "createdAt": "2026-10-21T12:00:00+00:00",
-        "updatedAt": "2026-10-21T12:00:00+00:00"
-    },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "modelType": "App\\Models\\User",
-    "isNewUser": true,
     "claims": {
         "sub": "108234...",
         "email": "john@example.com",
@@ -2200,19 +2060,24 @@ Content-Type: application/json
         "iat": 1791890690,
         "name": "John Doe",
         "picture": "https://lh3.googleusercontent.com/..."
-    }
+    },
+    "modelType": "App\\Models\\User",
+    "auth": { "id": 62, "name": "John Doe", "email": "john@example.com" },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "isNewUser": true,
+    "metadata": {}
 }
 ```
 
 **Réponse (200 OK) — utilisateur existant :**
 ```json
 {
-    "message": "Login successful",
-    "auth": { "id": 62, "name": "John Doe", "email": "john@example.com", ... },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "claims": { ... },
     "modelType": "App\\Models\\User",
+    "auth": { "id": 62, "name": "John Doe", "email": "john@example.com" },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "isNewUser": false,
-    "claims": { ... }
+    "metadata": {}
 }
 ```
 
@@ -2222,19 +2087,56 @@ Content-Type: application/json
 |-----|--------|-----------|
 | Record invalide | 500 | `INVALID_RECORD_TYPE` |
 | Email Google non vérifié | 500 | `GOOGLE_CALLBACK_ERROR` |
-| `model_type` inexistant | 400 | `GOOGLE_CALLBACK_ERROR` |
-| Modèle sans `MailAuthenticatable` | 400 | `GOOGLE_CALLBACK_ERROR` |
-| Modèle sans `GoogleAuthenticatable` | 400 | `GOOGLE_CALLBACK_ERROR` |
+| `model_type` inexistant | 400 | `GOOGLE_MODEL_NOT_FOUND` |
+| Modèle sans `MailAuthenticatable` | 400 | `GOOGLE_INVALID_MODEL` |
 | Erreur signature / JWKS | 500 | `GOOGLE_CALLBACK_ERROR` |
 | Validation | 422 | `VALIDATION_ERROR` |
 
-**Exemple d'erreur — modèle sans `GoogleAuthenticatable` :**
-```json
+### Exemple d'override de `onAndroidCallbackSuccess()`
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleAndroidCallbackData;
+use AndyDefer\AuthenticationKit\Google\Services\GoogleOAuthService;
+use AndyDefer\AuthenticationKit\Google\VOs\GoogleAndroidCallbackVO;
+use AndyDefer\DomainStructures\Utils\StrictAssociative;
+use AndyDefer\Nemesis\Datas\ErrorResponseData;
+
+final class AfyaGoogleOAuthService extends GoogleOAuthService
 {
-    "message": "The specified model_type cannot handle the Google Android flow, it must implement GoogleAuthenticatable: App\\Models\\LegacyUser",
-    "status": 400,
-    "errorCode": "GOOGLE_CALLBACK_ERROR",
-    "errors": null
+    public function onAndroidCallbackSuccess(GoogleAndroidCallbackVO $vo): GoogleAndroidCallbackData|ErrorResponseData
+    {
+        $email = strtolower($vo->getClaims()->getEmail());
+
+        $user = User::where('email', $email)->first();
+        $isNewUser = $user === null;
+
+        if ($isNewUser) {
+            $user = User::create([
+                'name'              => $vo->getClaims()->displayName(),
+                'email'             => $email,
+                'email_verified_at' => now(),
+            ]);
+        }
+
+        [$token, $plainToken] = $this->nemesis->createWithPlainToken(
+            /* record */,
+            $user,
+        );
+
+        return new GoogleAndroidCallbackData(
+            claims: $vo->getClaims(),
+            modelType: $vo->getModelType(),
+            auth: new StrictAssociative(
+                action_normalizer_chain(true)->normalize($user->nemesisFormat()),
+            ),
+            token: $plainToken,
+            isNewUser: $isNewUser,
+        );
+    }
 }
 ```
 
@@ -2250,24 +2152,22 @@ Content-Type: application/json
    ↓
 4. GoogleOAuthService::androidCallback()
    ↓
-   - Vérifie id_token (JWKS Google + claims, sans nonce)
-   - Vérifie que claims.emailVerified === true
+   - Vérifie id_token (JWKS Google + claims, sans nonce) → GoogleIdTokenClaimsVO
+   - Vérifie claims->isEmailVerified() === true
    - Vérifie class_exists(model_type)
    - Vérifie is_subclass_of(MailAuthenticatable)
-   - Vérifie is_subclass_of(GoogleAuthenticatable)
+   - Construit GoogleAndroidCallbackVO(claims, modelType)
+   - Délègue à onAndroidCallbackSuccess(GoogleAndroidCallbackVO)
    ↓
-5. Recherche utilisateur par email
+5. onAndroidCallbackSuccess() (application) :
+   - Recherche l'utilisateur par email
+   - Crée l'utilisateur si absent (décision applicative)
+   - Émet le token Nemesis
+   - Retourne GoogleAndroidCallbackData (ou ErrorResponseData)
    ↓
-   - Existe   → login direct
-   - N'existe pas → model_type::androidGenerate($claims)
+6. GoogleAndroidCallbackAction traduit le résultat en JSON
    ↓
-6. Émet token Nemesis via createWithPlainToken()
-   ↓
-7. Construit GoogleAndroidCallbackData
-   ↓
-8. GoogleAndroidCallbackAction vérifie getType() === JSON
-   ↓
-9. Réponse JSON au client
+7. Réponse JSON au client
 ```
 
 ### Garanties de sécurité Android
@@ -2279,78 +2179,17 @@ Content-Type: application/json
 | Émetteur usurpé | Vérification `iss` = `accounts.google.com` |
 | Token expiré | Vérification `exp` |
 | Email non vérifié | Refus si `email_verified !== true` |
-| Modèle incompatible | Triple vérification (`class_exists`, `MailAuthenticatable`, `GoogleAuthenticatable`) |
-| Fuite de données | Le modèle contrôle entièrement ce que `nemesisFormat()` expose |
-| Mot de passe forcé | Aucun — c'est `androidGenerate()` qui décide |
+| Modèle incompatible | `class_exists` + `is_subclass_of(MailAuthenticatable)` |
+| Fuite de données | L'application contrôle entièrement ce que `nemesisFormat()` expose |
 
 ### Ce que le flow Android NE fait PAS
 
-Contrairement au flow web (qui peut être surchargé via `onCallbackSuccess()`), le flow Android **délègue directement** la création et la sélection du payload à `androidGenerate()` et `onAndroidCallbackSuccess()`.
+Le service **ne crée pas** l'utilisateur et **n'émet pas** le token. Tout cela revient à l'application via `onAndroidCallbackSuccess()`, qui reçoit un `GoogleAndroidCallbackVO` et retourne un `GoogleAndroidCallbackData` complet.
 
 - **Pas de cookie posé par défaut** : le client Android gère son stockage (SharedPreferences, DataStore, Keystore).
 - **Pas de session** : Nemesis renvoie un token Bearer que le client enverra via `Authorization`.
 - **Pas de nonce** : `expectedNonce: null` dans `verify()`. Le `id_token` Android n'est pas émis avec un nonce de session serveur.
 - **Pas de state** : aucun state n'est consommé, aucun anti-replay côté serveur (le token Google a une durée de vie courte, et Nemesis émet un token d'usage propre).
-
-### Personnalisation du flow Android
-
-Comme pour le flow web, `GoogleOAuthService` expose des **hooks** et des méthodes surchargeables :
-
-```php
-final class MyGoogleService extends GoogleOAuthService
-{
-    protected function afterAndroidCallback(
-        GoogleAndroidCallbackRecord $record,
-        GoogleAndroidCallbackData $data,
-    ): void {
-        // Exemple : audit, notification, enrichissement
-        Log::info('Android Google login', [
-            'email' => $data->claims->email,
-            'is_new_user' => $data->isNewUser,
-        ]);
-    }
-
-    public function onAndroidCallbackSuccess(
-        GoogleAndroidCallbackData $data,
-    ): ResponseFactory {
-        // Exemple : ajouter un header personnalisé
-        return ResponseFactory::json($data)
-            ->withHeaders(['X-Auth-Method' => 'google-android']);
-    }
-}
-```
-
-### Intégration Android — Kotlin / Ktor
-
-```kotlin
-// 1. Credential Manager récupère l'id_token
-val credentialManager = CredentialManager.create(context)
-val request = GetCredentialRequest.Builder()
-    .addCredentialOption(
-        GetGoogleIdOption.Builder()
-            .setServerClientId(serverClientId)
-            .setFilterByAuthorizedAccounts(false)
-            .build()
-    )
-    .build()
-
-val credential = credentialManager.getCredential(context, request)
-val idToken = (credential.credential as CustomCredential)
-    .let { GoogleIdTokenCredential.createFrom(it.data).idToken }
-
-// 2. Envoi au backend
-val response = client.post("$BASE_URL/api/google-android-callback") {
-    contentType(ContentType.Application.Json)
-    setBody(GoogleAndroidAuthRequest(
-        model_type = "App\\Models\\User",
-        id_token = idToken,
-    ))
-}
-
-val auth: AuthAndroidGoogleData = response.body()
-// auth.token  → stocker dans EncryptedSharedPreferences
-// auth.user   → injecter dans le state de session
-```
 
 ### Comparaison flow web vs Android
 
@@ -2362,21 +2201,12 @@ val auth: AuthAndroidGoogleData = response.body()
 | Nonce | Oui | Non (pas de session serveur) |
 | State | Oui (usage unique) | Non |
 | Réponse | Vue Blade / Inertia | JSON |
-| Création utilisateur | `afterCallback()` hook | `androidGenerate()` du modèle |
-| Token émis | Par l'application (dans `afterCallback`) | Par le service (Nemesis auto) |
-| Cookie | Optionnel (config `store_token_in_cookie`) | Non (Bearer uniquement) |
+| VO reçu par `on*CallbackSuccess()` | `GoogleCallbackVO` | `GoogleAndroidCallbackVO` |
+| Data retournée | `GoogleCallbackData` | `GoogleAndroidCallbackData` |
+| Création utilisateur | Dans `onCallbackSuccess()` | Dans `onAndroidCallbackSuccess()` |
+| Token émis | Dans `onCallbackSuccess()` | Dans `onAndroidCallbackSuccess()` |
+| Cookie | Optionnel (`store_token_in_cookie`) | Non (Bearer uniquement) |
 | `isNewUser` | Non exposé | Exposé dans la réponse |
-
-### Migration vers Android callback
-
-Si vous n'utilisez que le flow web actuellement, rien à changer. Le flow Android est **additif** :
-
-1. Ajouter l'interface `GoogleAuthenticatable` au modèle cible.
-2. Implémenter `androidGenerate(GoogleIdTokenClaimsData $claims)`.
-3. Publier la route `/google-android-callback`.
-4. Aucune modification du flow web existant.
-
-Le service `GoogleOAuthService` supporte **les deux flows simultanément** sur le même modèle.
 
 ---
 
@@ -2515,7 +2345,6 @@ class CustomLogRepository implements LogRepositoryInterface
 | `GOOGLE_PROVIDER_ERROR` | 400 | Erreur remontée par Google (`access_denied`, etc.) |
 | `GOOGLE_MODEL_NOT_FOUND` | 400 | `model_type` inexistant |
 | `GOOGLE_INVALID_MODEL` | 400 | `model_type` sans `MailAuthenticatable` |
-| `GOOGLE_MODEL_NOT_GOOGLE_AUTHENTICATABLE` | 400 | `model_type` sans `GoogleAuthenticatable` |
 
 ### ErrorType (Logs)
 
@@ -2582,8 +2411,8 @@ class CustomLogRepository implements LogRepositoryInterface
 | **Google JWKS** | Vérification RS256 | Automatique |
 | **Google `aud`** | Contrôle audience | Automatique |
 | **Google `email_verified`** | Refus si non vérifié | Automatique |
-| **Android modèle** | Triple vérification | `class_exists` + `MailAuthenticatable` + `GoogleAuthenticatable` |
-| **Android création** | Déléguée au modèle | `androidGenerate()` |
+| **Android modèle** | Double vérification | `class_exists` + `MailAuthenticatable` |
+| **Android création** | Déléguée à `onAndroidCallbackSuccess()` | — |
 
 ---
 
@@ -2694,23 +2523,35 @@ Hooks : `beforeRestoreCookie`, `afterRestoreCookie`.
 2. **Nouvelles méthodes** dans `AuthenticationKitConfigInterface` (Google)
 3. **Service Provider** : `GoogleServiceProvider` enregistré automatiquement
 4. **Routes Google** : `/google-redirect`, `/google-callback`
-5. **Persistance utilisateur** : à la charge de l'application après réception de `GoogleCallbackData`
 
-### De v1.15.x à v1.16.0 — Google OAuth Android
+### De v1.15.x à v1.16.0 — Google OAuth Android + VOs
 
-1. **Configuration** : ajouter `authentication-kit.google.callback` (type + target)
-2. **Nouvelle interface** : `GoogleAuthenticatable` avec `androidGenerate()`
-3. **Nouvelle route** : `POST /api/google-android-callback` (doit être dans le groupe API)
-4. **`GoogleCallbackAction`** : retourne désormais toujours une vue ou Inertia (jamais JSON)
-5. **Modèle cible Android** : implémente `MailAuthenticatable` **et** `GoogleAuthenticatable`
+1. **Nouveaux VOs** dans le namespace `Google\ValueObjects` :
+   - `GoogleCallbackVO` — reçu par `onCallbackSuccess()`
+   - `GoogleAndroidCallbackVO` — reçu par `onAndroidCallbackSuccess()`
+   - `GoogleIdTokenClaimsVO` — claims vérifiés (remplace `GoogleIdTokenClaimsData`)
+
+2. **Contrat `GoogleOAuthInterface`** :
+   - `onCallbackSuccess(GoogleCallbackVO $vo): GoogleCallbackData|ErrorResponseData`
+   - `onAndroidCallbackSuccess(GoogleAndroidCallbackVO $vo): GoogleAndroidCallbackData|ErrorResponseData`
+
+3. **Data de sortie** :
+   - `GoogleCallbackData` — retournée par `onCallbackSuccess()` (auth + token + isNewUser + metadata)
+   - `GoogleAndroidCallbackData` — retournée par `onAndroidCallbackSuccess()` (claims + modelType + auth + token + isNewUser + metadata)
+
+4. **Nouvelle route** : `POST /api/google-android-callback` (groupe API, JSON uniquement)
+
+5. **`GoogleCallbackAction`** : retourne désormais toujours une vue ou Inertia (jamais JSON), avec prop `success` ou `error`
+
+6. **Modèle cible Android** : implémente `MailAuthenticatable`. La résolution/création de l'utilisateur et l'émission du token sont déléguées à `onAndroidCallbackSuccess()`.
 
 ### Migration du callback web (breaking change)
 
 Le callback web ne retourne plus de JSON. Si votre application consommait `GoogleCallbackData` en JSON via `/google-callback` :
 
 1. Migrez vers `/google-android-callback` si vous êtes un client mobile.
-2. Ou surchargez `GoogleOAuthService::onCallbackSuccess()` pour conserver un rendu JSON si c'est réellement nécessaire.
-3. Ou configurez `callback.type` = `"view"` / `"inertia"` et consommez `$data` dans la vue.
+2. Ou surchargez `GoogleOAuthService::onCallbackSuccess()` pour retourner un `GoogleCallbackData`, et configurez `callback.type` = `"view"` / `"inertia"` pour le rendu.
+3. Ou configurez `callback.type` = `"view"` / `"inertia"` et consommez la prop `success` dans la vue.
 
 ---
 
@@ -2781,13 +2622,11 @@ src/
     │   ├── GoogleCallbackAction.php
     │   └── GoogleRedirectAction.php
     ├── Contracts/
-    │   ├── GoogleAuthenticatable.php
     │   ├── GoogleOAuthInterface.php
     │   └── GoogleStateStoreInterface.php
     ├── Datas/
     │   ├── GoogleAndroidCallbackData.php
     │   ├── GoogleCallbackData.php
-    │   ├── GoogleIdTokenClaimsData.php
     │   ├── GoogleRedirectData.php
     │   └── GoogleTokensData.php
     ├── Enums/
@@ -2818,6 +2657,10 @@ src/
     │   └── GoogleStateStore.php
     ├── Structs/
     │   └── GoogleTokenExchangeBodyStruct.php
+    ├── ValueObjects/
+    │   ├── GoogleAndroidCallbackVO.php
+    │   ├── GoogleCallbackVO.php
+    │   └── GoogleIdTokenClaimsVO.php
     ├── GoogleServiceProvider.php
     └── routes.php
 ```

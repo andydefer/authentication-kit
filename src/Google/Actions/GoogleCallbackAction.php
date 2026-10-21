@@ -10,6 +10,7 @@ use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
@@ -17,30 +18,20 @@ use AndyDefer\Nemesis\Datas\ErrorResponseData;
 use Exception;
 use GuzzleHttp\Exception\GuzzleException;
 use Throwable;
-use UnexpectedValueException;
 
 /**
- * Handles Google's OAuth callback: delegates to the Google OAuth service
- * and returns the HTTP response produced by the service.
+ * Handles Google's browser OAuth callback.
  *
- * The callback is a browser round-trip: every response — success or
- * failure — is rendered through the configured Web presentation
- * (`authentication-kit.google.callback.type` = "view" | "inertia").
- * Errors are never returned as JSON: the full ErrorResponseData is
- * passed to the view / Inertia component via the `error` prop.
+ * Renders the configured Web presentation (Blade view or Inertia page)
+ * with either:
+ *  - ['success' => GoogleCallbackData] on success (fully populated)
+ *  - ['error'   => ErrorResponseData]  on failure
+ *
+ * The action NEVER throws to produce a response: every failure path
+ * returns a ResponseFactory.
  */
 final class GoogleCallbackAction extends AbstractAction
 {
-    /**
-     * Response types allowed for a Google callback.
-     */
-    private const ALLOWED_RESPONSE_TYPES = [
-        HttpResponseType::VIEW,
-        HttpResponseType::INERTIA,
-    ];
-
-    private const PROP_ERROR = 'error';
-
     public function __construct(
         private readonly GoogleOAuthInterface $googleOAuth,
         private readonly AuthenticationKitConfigInterface $config,
@@ -62,74 +53,64 @@ final class GoogleCallbackAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof GoogleCallbackRecord) {
-            return $this->renderError(
-                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
-            );
+            return $this->renderError(ErrorCode::INVALID_RECORD_TYPE->toResponseData());
         }
 
         try {
-            $response = $this->googleOAuth->callback($record);
-
-            if (! in_array($response->getType(), self::ALLOWED_RESPONSE_TYPES, true)) {
-                throw new UnexpectedValueException(sprintf(
-                    'GoogleOAuthInterface::callback() must return a Web response (VIEW or INERTIA), got "%s".',
-                    $response->getType()->value,
-                ));
-            }
-
-            return $response;
+            $result = $this->googleOAuth->callback($record);
         } catch (GoogleOAuthException $e) {
             $code = $e->isProviderError()
                 ? ErrorCode::GOOGLE_PROVIDER_ERROR
                 : ErrorCode::GOOGLE_CALLBACK_ERROR;
 
-            return $this->renderError(
-                $code->toResponseData(message: $e->getMessage()),
-            );
-        } catch (UnexpectedValueException $e) {
-            return $this->renderError(
-                ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR->toResponseData(
-                    message: $e->getMessage(),
-                ),
-            );
+            return $this->renderError($code->toResponseData(message: $e->getMessage()));
         } catch (Exception $e) {
             $code = $this->isHttpClientFailure($e)
                 ? ErrorCode::GOOGLE_CALLBACK_ERROR
                 : ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR;
 
-            return $this->renderError(
-                $code->toResponseData(message: $e->getMessage()),
-            );
+            return $this->renderError($code->toResponseData(message: $e->getMessage()));
         }
+
+        return match (true) {
+            $result instanceof ErrorResponseData => $this->renderError($result),
+            $result instanceof GoogleCallbackData => $this->renderSuccess($result),
+            default => $this->renderError(
+                ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR->toResponseData(
+                    message: 'GoogleOAuthInterface::callback() returned an unexpected type.',
+                ),
+            ),
+        };
+    }
+
+    private function renderSuccess(GoogleCallbackData $success): ResponseFactory
+    {
+        return $this->renderPresentation(['success' => $success]);
+    }
+
+    private function renderError(ErrorResponseData $error): ResponseFactory
+    {
+        return $this->renderPresentation(['error' => $error]);
     }
 
     /**
-     * Renders a Web error response through the configured callback
-     * presentation (view or inertia), injecting the normalized
-     * ErrorResponseData as the `error` prop.
+     * @param  array<string, mixed>  $props
      */
-    private function renderError(ErrorResponseData $error): ResponseFactory
+    private function renderPresentation(array $props): ResponseFactory
     {
-        $props = [self::PROP_ERROR => $error];
-
         $type = $this->config->getGoogleCallbackResponseType();
         $target = $this->config->getGoogleCallbackTarget();
 
         return match ($type) {
             HttpResponseType::VIEW => ResponseFactory::view($target, $props),
             HttpResponseType::INERTIA => ResponseFactory::inertia($target, $props),
-            default => throw new \LogicException(sprintf(
-                'Unsupported Google callback response type: %s.',
-                $type->value,
-            )),
+            default => ResponseFactory::text(
+                "Unsupported Google callback response type: {$type->value}",
+                500,
+            ),
         };
     }
 
-    /**
-     * Whether the given throwable (or one of its causes) is a Guzzle
-     * HTTP failure. Handles the case where the HTTP client wraps the
-     * underlying Guzzle exception into a generic RuntimeException.
-     */
     private function isHttpClientFailure(Throwable $exception): bool
     {
         $current = $exception;

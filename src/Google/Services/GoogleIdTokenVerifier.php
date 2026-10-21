@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Google\Services;
 
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
-use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Requests\EmptyRequest;
 use AndyDefer\AuthenticationKit\Google\Responses\GoogleJwksResponse;
+use AndyDefer\AuthenticationKit\Google\ValueObjects\GoogleIdTokenClaimsVO;
 use AndyDefer\PhpClient\Clients\ClientService;
 
 class GoogleIdTokenVerifier
@@ -26,7 +26,7 @@ class GoogleIdTokenVerifier
     /**
      * @throws GoogleOAuthException
      */
-    public function verify(string $idToken, ?string $expectedNonce = null): GoogleIdTokenClaimsData
+    public function verify(string $idToken, ?string $expectedNonce = null): GoogleIdTokenClaimsVO
     {
         $parts = explode('.', $idToken);
 
@@ -224,23 +224,23 @@ class GoogleIdTokenVerifier
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function hydrateClaims(array $payload): GoogleIdTokenClaimsData
+    private function hydrateClaims(array $payload): GoogleIdTokenClaimsVO
     {
-        return GoogleIdTokenClaimsData::from([
-            'sub' => (string) ($payload['sub'] ?? ''),
-            'email' => (string) ($payload['email'] ?? ''),
-            'emailVerified' => (bool) ($payload['email_verified'] ?? false),
-            'iss' => (string) ($payload['iss'] ?? ''),
-            'aud' => (string) ($payload['aud'] ?? ''),
-            'exp' => (int) ($payload['exp'] ?? 0),
-            'iat' => (int) ($payload['iat'] ?? 0),
-            'nonce' => isset($payload['nonce']) ? (string) $payload['nonce'] : null,
-            'name' => isset($payload['name']) ? (string) $payload['name'] : null,
-            'givenName' => isset($payload['given_name']) ? (string) $payload['given_name'] : null,
-            'familyName' => isset($payload['family_name']) ? (string) $payload['family_name'] : null,
-            'picture' => isset($payload['picture']) ? (string) $payload['picture'] : null,
-            'locale' => isset($payload['locale']) ? (string) $payload['locale'] : null,
-            'hd' => isset($payload['hd']) ? (string) $payload['hd'] : null,
-        ]);
+        return new GoogleIdTokenClaimsVO(
+            sub: (string) ($payload['sub'] ?? ''),
+            email: (string) ($payload['email'] ?? ''),
+            emailVerified: (bool) ($payload['email_verified'] ?? false),
+            iss: (string) ($payload['iss'] ?? ''),
+            aud: (string) ($payload['aud'] ?? ''),
+            exp: (int) ($payload['exp'] ?? 0),
+            iat: (int) ($payload['iat'] ?? 0),
+            nonce: isset($payload['nonce']) ? (string) $payload['nonce'] : null,
+            name: isset($payload['name']) ? (string) $payload['name'] : null,
+            givenName: isset($payload['given_name']) ? (string) $payload['given_name'] : null,
+            familyName: isset($payload['family_name']) ? (string) $payload['family_name'] : null,
+            picture: isset($payload['picture']) ? (string) $payload['picture'] : null,
+            locale: isset($payload['locale']) ? (string) $payload['locale'] : null,
+            hd: isset($payload['hd']) ? (string) $payload['hd'] : null,
+        );
     }
 }

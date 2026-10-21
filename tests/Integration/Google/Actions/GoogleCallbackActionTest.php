@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Tests\Integration\Google\Actions;
 
 use AndyDefer\Actions\Enums\HttpResponseType;
+use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleCallbackAction;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
-use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
 use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
@@ -19,7 +19,11 @@ use AndyDefer\AuthenticationKit\Google\Requests\GoogleCallbackRequest;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleIdTokenVerifier;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleOAuthService;
 use AndyDefer\AuthenticationKit\Google\Services\GooglePkceGenerator;
+use AndyDefer\AuthenticationKit\Google\ValueObjects\GoogleCallbackVO;
+use AndyDefer\AuthenticationKit\Google\ValueObjects\GoogleIdTokenClaimsVO;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
+use AndyDefer\DomainStructures\Utils\StrictAssociative;
+use AndyDefer\Nemesis\Datas\ErrorResponseData;
 use AndyDefer\PhpClient\Clients\ClientService;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Handler\MockHandler;
@@ -163,24 +167,93 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         ));
     }
 
+    private function makeClaims(): GoogleIdTokenClaimsVO
+    {
+        return new GoogleIdTokenClaimsVO(
+            sub: 'sub-123',
+            email: 'user@example.com',
+            emailVerified: true,
+            iss: 'https://accounts.google.com',
+            aud: 'test-client-id.apps.googleusercontent.com',
+            exp: time() + 3600,
+            iat: time(),
+            nonce: 'nonce-xyz',
+        );
+    }
+
     private function configureValidIdTokenVerifier(): void
     {
-        $claims = GoogleIdTokenClaimsData::from([
-            'sub' => 'sub-123',
-            'email' => 'user@example.com',
-            'emailVerified' => true,
-            'iss' => 'https://accounts.google.com',
-            'aud' => 'test-client-id.apps.googleusercontent.com',
-            'exp' => time() + 3600,
-            'iat' => time(),
-            'nonce' => 'nonce-xyz',
-        ]);
+        $claims = $this->makeClaims();
 
         $this->idTokenVerifierMock
             ->shouldReceive('verify')
             ->once()
             ->with('header.payload.signature', 'nonce-xyz')
             ->andReturn($claims);
+    }
+
+    private function makeCallbackData(OperationType $operation): GoogleCallbackData
+    {
+        $claims = $this->makeClaims();
+
+        return new GoogleCallbackData(
+            idToken: 'header.payload.signature',
+            accessToken: 'access-token-xyz',
+            expiresIn: 3600,
+            tokenType: 'Bearer',
+            scope: 'openid email profile',
+            claims: $claims,
+            operation: $operation,
+            auth: new StrictAssociative(['id' => 42, 'email' => 'user@example.com']),
+            token: 'plain-nemesis-token',
+            isNewUser: $operation === OperationType::REGISTER,
+        );
+    }
+
+    /**
+     * Rebind GoogleOAuthService with an anonymous subclass that returns a
+     * deterministic GoogleCallbackData from onCallbackSuccess(), so the
+     * action renders a success view.
+     */
+    private function bindSuccessfulOAuthService(OperationType $operation): void
+    {
+        $this->app->singleton(
+            GoogleOAuthService::class,
+            function ($app) {
+                return new class(client: $app->make(ClientService::class), config: $app->make(AuthenticationKitConfig::class), pkceGenerator: $app->make(GooglePkceGenerator::class), stateStore: $app->make(GoogleStateStoreInterface::class), idTokenVerifier: $app->make(GoogleIdTokenVerifier::class)) extends GoogleOAuthService
+                {
+                    public function __construct(
+                        $client,
+                        $config,
+                        $pkceGenerator,
+                        $stateStore,
+                        $idTokenVerifier,
+                    ) {
+                        parent::__construct($client, $config, $pkceGenerator, $stateStore, $idTokenVerifier);
+                    }
+
+                    public function onCallbackSuccess(GoogleCallbackVO $vo): GoogleCallbackData|ErrorResponseData
+                    {
+                        $claims = $vo->getClaims();
+
+                        return new GoogleCallbackData(
+                            idToken: $vo->getIdToken(),
+                            accessToken: $vo->getAccessToken(),
+                            expiresIn: $vo->getExpiresIn(),
+                            tokenType: $vo->getTokenType(),
+                            scope: $vo->getScope(),
+                            claims: $claims,
+                            operation: $vo->getOperation(),
+                            auth: new StrictAssociative(['id' => 42, 'email' => $claims->getEmail()]),
+                            token: 'plain-nemesis-token',
+                            isNewUser: $vo->getOperation() === OperationType::REGISTER,
+                        );
+                    }
+                };
+            }
+        );
+
+        $this->app->forgetInstance(GoogleCallbackAction::class);
     }
 
     private function assertCallbackErrorView(TestResponse $response): void
@@ -193,7 +266,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
      * Invokes the action directly, bypassing the HTTP request validation,
      * so we can inspect the ResponseFactory type without routing.
      */
-    private function runAction(string $code, string $state)
+    private function runAction(string $code, string $state): ResponseFactory
     {
         $action = $this->app->make(GoogleCallbackAction::class);
 
@@ -214,6 +287,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
+        $this->bindSuccessfulOAuthService(OperationType::LOGIN);
 
         $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
@@ -222,6 +296,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
 
         $response->assertStatus(200);
         $response->assertViewIs('auth.google-callback');
+        $response->assertViewHas('success');
     }
 
     public function test_callback_returns_view_type_on_success(): void
@@ -229,6 +304,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
+        $this->bindSuccessfulOAuthService(OperationType::LOGIN);
 
         $factory = $this->runAction('auth-code', 'valid-state');
 
@@ -254,6 +330,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
+        $this->bindSuccessfulOAuthService(OperationType::LOGIN);
 
         $factory = $this->runAction('auth-code', 'valid-state');
 
@@ -266,6 +343,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->prepareValidState(OperationType::LOGIN);
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
+        $this->bindSuccessfulOAuthService(OperationType::LOGIN);
 
         $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
@@ -275,11 +353,11 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $response->assertViewIs('auth.google-callback');
 
-        /** @var GoogleCallbackData $data */
-        $data = $response->viewData('data');
+        /** @var GoogleCallbackData $success */
+        $success = $response->viewData('success');
 
-        $this->assertInstanceOf(GoogleCallbackData::class, $data);
-        $this->assertSame(OperationType::LOGIN, $data->operation);
+        $this->assertInstanceOf(GoogleCallbackData::class, $success);
+        $this->assertSame(OperationType::LOGIN, $success->operation);
     }
 
     public function test_callback_renders_operation_register(): void
@@ -287,6 +365,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->prepareValidState(OperationType::REGISTER);
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
+        $this->bindSuccessfulOAuthService(OperationType::REGISTER);
 
         $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
@@ -296,11 +375,11 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $response->assertViewIs('auth.google-callback');
 
-        /** @var GoogleCallbackData $data */
-        $data = $response->viewData('data');
+        /** @var GoogleCallbackData $success */
+        $success = $response->viewData('success');
 
-        $this->assertInstanceOf(GoogleCallbackData::class, $data);
-        $this->assertSame(OperationType::REGISTER, $data->operation);
+        $this->assertInstanceOf(GoogleCallbackData::class, $success);
+        $this->assertSame(OperationType::REGISTER, $success->operation);
     }
 
     // ============================================================================
@@ -327,6 +406,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             'error_description' => 'The user denied the request',
         ]));
 
+        /** @var ErrorResponseData $error */
         $error = $response->viewData('error');
 
         $this->assertSame('GOOGLE_PROVIDER_ERROR', $error->errorCode);
@@ -347,8 +427,9 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $this->assertCallbackErrorView($response);
 
+        /** @var ErrorResponseData $error */
         $error = $response->viewData('error');
-        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
+        $this->assertSame('GOOGLE_STATE_MISMATCH', $error->errorCode);
     }
 
     public function test_callback_renders_error_view_when_state_is_expired(): void
@@ -371,8 +452,9 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $this->assertCallbackErrorView($response);
 
+        /** @var ErrorResponseData $error */
         $error = $response->viewData('error');
-        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
+        $this->assertSame('GOOGLE_STATE_EXPIRED', $error->errorCode);
     }
 
     // ============================================================================
@@ -402,6 +484,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $this->assertCallbackErrorView($response);
 
+        /** @var ErrorResponseData $error */
         $error = $response->viewData('error');
         $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
@@ -429,6 +512,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $this->assertCallbackErrorView($response);
 
+        /** @var ErrorResponseData $error */
         $error = $response->viewData('error');
         $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
@@ -452,6 +536,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $response->assertStatus(200);
         $this->assertCallbackErrorView($response);
 
+        /** @var ErrorResponseData $error */
         $error = $response->viewData('error');
         $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
@@ -465,6 +550,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
+        $this->bindSuccessfulOAuthService(OperationType::LOGIN);
 
         $first = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
@@ -472,6 +558,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         ]));
 
         $first->assertStatus(200);
+        $first->assertViewHas('success');
 
         $second = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
@@ -481,7 +568,8 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $second->assertStatus(200);
         $this->assertCallbackErrorView($second);
 
+        /** @var ErrorResponseData $error */
         $error = $second->viewData('error');
-        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
+        $this->assertSame('GOOGLE_STATE_MISMATCH', $error->errorCode);
     }
 }

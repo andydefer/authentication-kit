@@ -14,7 +14,6 @@ use AndyDefer\AuthenticationKit\Google\Services\GoogleIdTokenVerifier;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleOAuthService;
 use AndyDefer\AuthenticationKit\Google\Services\GooglePkceGenerator;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleStateStore;
-use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\PhpClient\Clients\ClientService;
 use Illuminate\Support\ServiceProvider;
 
@@ -59,7 +58,6 @@ final class GoogleServiceProvider extends ServiceProvider
                     pkceGenerator: $app->make(GooglePkceGenerator::class),
                     stateStore: $app->make(GoogleStateStoreInterface::class),
                     idTokenVerifier: $app->make(GoogleIdTokenVerifier::class),
-                    nemesis: $app->make(NemesisInterface::class),
                 );
             }
         );

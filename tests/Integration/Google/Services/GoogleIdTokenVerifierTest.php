@@ -166,10 +166,10 @@ final class GoogleIdTokenVerifierTest extends IntegrationTestCase
 
         $claims = $this->verifier->verify($token, 'expected-nonce');
 
-        $this->assertSame('google-user-123', $claims->sub);
-        $this->assertSame('user@example.com', $claims->email);
-        $this->assertTrue($claims->emailVerified);
-        $this->assertSame('John Doe', $claims->name);
+        $this->assertSame('google-user-123', $claims->getSub());
+        $this->assertSame('user@example.com', $claims->getEmail());
+        $this->assertTrue($claims->isEmailVerified());
+        $this->assertSame('John Doe', $claims->getName());
     }
 
     public function test_verify_accepts_issuer_without_scheme(): void
@@ -181,7 +181,7 @@ final class GoogleIdTokenVerifierTest extends IntegrationTestCase
 
         $claims = $this->verifier->verify($token, 'expected-nonce');
 
-        $this->assertSame('accounts.google.com', $claims->iss);
+        $this->assertSame('accounts.google.com', $claims->getIss());
     }
 
     public function test_verify_throws_when_token_is_malformed(): void
@@ -334,7 +334,7 @@ final class GoogleIdTokenVerifierTest extends IntegrationTestCase
 
         $claims = $this->verifier->verify($token, null);
 
-        $this->assertSame('anything', $claims->nonce);
+        $this->assertSame('anything', $claims->getNonce());
     }
 
     public function test_verify_hydrates_optional_claims(): void
@@ -352,11 +352,11 @@ final class GoogleIdTokenVerifierTest extends IntegrationTestCase
 
         $claims = $this->verifier->verify($token, 'expected-nonce');
 
-        $this->assertSame('John', $claims->givenName);
-        $this->assertSame('Doe', $claims->familyName);
-        $this->assertSame('https://example.com/avatar.png', $claims->picture);
-        $this->assertSame('en', $claims->locale);
-        $this->assertSame('example.com', $claims->hd);
+        $this->assertSame('John', $claims->getGivenName());
+        $this->assertSame('Doe', $claims->getFamilyName());
+        $this->assertSame('https://example.com/avatar.png', $claims->getPicture());
+        $this->assertSame('en', $claims->getLocale());
+        $this->assertSame('example.com', $claims->getHd());
     }
 
     public function test_verify_handles_missing_optional_claims(): void
@@ -371,9 +371,9 @@ final class GoogleIdTokenVerifierTest extends IntegrationTestCase
 
         $claims = $this->verifier->verify($token, 'expected-nonce');
 
-        $this->assertNull($claims->name);
-        $this->assertNull($claims->givenName);
-        $this->assertNull($claims->familyName);
-        $this->assertNull($claims->picture);
+        $this->assertNull($claims->getName());
+        $this->assertNull($claims->getGivenName());
+        $this->assertNull($claims->getFamilyName());
+        $this->assertNull($claims->getPicture());
     }
 }

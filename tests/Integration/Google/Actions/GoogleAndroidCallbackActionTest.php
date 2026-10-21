@@ -5,15 +5,17 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Tests\Integration\Google\Actions;
 
 use AndyDefer\Actions\Enums\HttpResponseType;
-use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
+use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleAndroidCallbackAction;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleAndroidCallbackData;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleAndroidCallbackRecord;
+use AndyDefer\AuthenticationKit\Google\ValueObjects\GoogleIdTokenClaimsVO;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
-use AndyDefer\DomainStructures\Abstracts\AbstractData;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\DomainStructures\Utils\StrictAssociative;
 use AndyDefer\Nemesis\Datas\ErrorResponseData;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
@@ -45,6 +47,8 @@ final class GoogleAndroidCallbackActionTest extends IntegrationTestCase
         parent::tearDown();
     }
 
+    // ==================== HELPERS ====================
+
     private function makeRecord(
         string $modelType = 'App\\Models\\User',
         string $idToken = 'fake.jwt.token',
@@ -55,14 +59,28 @@ final class GoogleAndroidCallbackActionTest extends IntegrationTestCase
         );
     }
 
-    private function okFactory(): ResponseFactory
+    private function makeClaims(): GoogleIdTokenClaimsVO
     {
-        $data = new class('Login successful') extends AbstractData
-        {
-            public function __construct(public readonly string $message) {}
-        };
+        return new GoogleIdTokenClaimsVO(
+            sub: 'sub-123',
+            email: 'user@example.com',
+            emailVerified: true,
+            iss: 'https://accounts.google.com',
+            aud: 'test-client-id.apps.googleusercontent.com',
+            exp: time() + 3600,
+            iat: time(),
+        );
+    }
 
-        return ResponseFactory::json($data);
+    private function okData(bool $isNewUser = false): GoogleAndroidCallbackData
+    {
+        return new GoogleAndroidCallbackData(
+            claims: $this->makeClaims(),
+            modelType: 'App\\Models\\User',
+            auth: new StrictAssociative(['id' => 42, 'email' => 'user@example.com']),
+            token: 'plain-nemesis-token',
+            isNewUser: $isNewUser,
+        );
     }
 
     // ==================== before() GUARD ====================
@@ -90,11 +108,19 @@ final class GoogleAndroidCallbackActionTest extends IntegrationTestCase
             ->shouldReceive('androidCallback')
             ->once()
             ->with(Mockery::type(GoogleAndroidCallbackRecord::class))
-            ->andReturn($this->okFactory());
+            ->andReturn($this->okData());
 
         $response = $this->action->run($record);
 
         $this->assertSame(HttpResponseType::JSON, $response->getType());
+
+        /** @var GoogleAndroidCallbackData $payload */
+        $payload = $response->getContent();
+
+        $this->assertInstanceOf(GoogleAndroidCallbackData::class, $payload);
+        $this->assertSame('plain-nemesis-token', $payload->token);
+        $this->assertSame('App\\Models\\User', $payload->modelType);
+        $this->assertFalse($payload->isNewUser);
     }
 
     public function test_handle_passes_exact_record_to_service(): void
@@ -108,52 +134,57 @@ final class GoogleAndroidCallbackActionTest extends IntegrationTestCase
                 return $incoming->model_type === 'App\\Models\\User'
                     && $incoming->id_token === 'specific.id.token';
             })
-            ->andReturn($this->okFactory());
+            ->andReturn($this->okData());
 
         $response = $this->action->run($record);
 
         $this->assertSame(HttpResponseType::JSON, $response->getType());
     }
 
-    // ==================== UNEXPECTED RESPONSE TYPE ====================
-
-    public function test_handle_returns_callback_unexpected_error_when_service_returns_view(): void
+    public function test_handle_flags_new_user_on_success(): void
     {
         $record = $this->makeRecord();
 
         $this->googleOAuth
             ->shouldReceive('androidCallback')
             ->once()
-            ->andReturn(ResponseFactory::view('some.view', []));
+            ->andReturn($this->okData(isNewUser: true));
+
+        $response = $this->action->run($record);
+
+        /** @var GoogleAndroidCallbackData $payload */
+        $payload = $response->getContent();
+
+        $this->assertTrue($payload->isNewUser);
+    }
+
+    // ==================== ERROR RESPONSE DATA FROM SERVICE ====================
+
+    public function test_handle_returns_json_error_when_service_returns_error_response_data(): void
+    {
+        $record = $this->makeRecord();
+
+        $error = ErrorCode::GOOGLE_CALLBACK_ERROR->toResponseData('Something failed');
+
+        $this->googleOAuth
+            ->shouldReceive('androidCallback')
+            ->once()
+            ->andReturn($error);
 
         $response = $this->action->run($record);
 
         $this->assertSame(HttpResponseType::JSON, $response->getType());
+        $this->assertSame($error->status->value, $response->getStatus());
 
         /** @var ErrorResponseData $payload */
         $payload = $response->getContent();
 
-        $this->assertSame('GOOGLE_CALLBACK_UNEXPECTED_ERROR', $payload->errorCode);
+        $this->assertInstanceOf(ErrorResponseData::class, $payload);
+        $this->assertSame('GOOGLE_CALLBACK_ERROR', $payload->errorCode);
+        $this->assertSame('Something failed', $payload->message);
     }
 
-    public function test_handle_returns_callback_unexpected_error_when_service_returns_redirect(): void
-    {
-        $record = $this->makeRecord();
-
-        $this->googleOAuth
-            ->shouldReceive('androidCallback')
-            ->once()
-            ->andReturn(ResponseFactory::redirect('/somewhere'));
-
-        $response = $this->action->run($record);
-
-        /** @var ErrorResponseData $payload */
-        $payload = $response->getContent();
-
-        $this->assertSame('GOOGLE_CALLBACK_UNEXPECTED_ERROR', $payload->errorCode);
-    }
-
-    // ==================== GOOGLE OAUTH EXCEPTIONS ====================
+    // ==================== GOOGLE OAUTH EXCEPTIONS (thrown by service) ====================
 
     public function test_handle_returns_provider_error_when_exception_is_provider_error(): void
     {
@@ -227,24 +258,6 @@ final class GoogleAndroidCallbackActionTest extends IntegrationTestCase
 
         $this->assertSame('GOOGLE_CALLBACK_ERROR', $payload->errorCode);
         $this->assertStringContainsString('App\\Models\\Nope', $payload->message);
-    }
-
-    public function test_handle_returns_callback_error_when_model_not_google_authenticatable(): void
-    {
-        $record = $this->makeRecord();
-
-        $this->googleOAuth
-            ->shouldReceive('androidCallback')
-            ->once()
-            ->andThrow(GoogleOAuthException::modelNotGoogleAuthenticatable('App\\Models\\User'));
-
-        $response = $this->action->run($record);
-
-        /** @var ErrorResponseData $payload */
-        $payload = $response->getContent();
-
-        $this->assertSame('GOOGLE_CALLBACK_ERROR', $payload->errorCode);
-        $this->assertStringContainsString('cannot handle the Google Android flow', $payload->message);
     }
 
     // ==================== GENERIC EXCEPTIONS ====================
