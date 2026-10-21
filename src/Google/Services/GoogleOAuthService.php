@@ -32,12 +32,12 @@ use Illuminate\Database\Eloquent\Model;
 class GoogleOAuthService implements GoogleOAuthInterface
 {
     public function __construct(
-        private readonly ClientService $client,
-        private readonly AuthenticationKitConfig $config,
-        private readonly GooglePkceGenerator $pkceGenerator,
-        private readonly GoogleStateStoreInterface $stateStore,
-        private readonly GoogleIdTokenVerifier $idTokenVerifier,
-        private readonly NemesisInterface $nemesis,
+        protected readonly ClientService $client,
+        protected readonly AuthenticationKitConfig $config,
+        protected readonly GooglePkceGenerator $pkceGenerator,
+        protected readonly GoogleStateStoreInterface $stateStore,
+        protected readonly GoogleIdTokenVerifier $idTokenVerifier,
+        protected readonly NemesisInterface $nemesis,
     ) {}
 
     /**
