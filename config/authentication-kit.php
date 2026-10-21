@@ -85,5 +85,24 @@ return [
 
         'state_lifetime' => env('AUTH_KIT_GOOGLE_STATE_LIFETIME', 600),
         'pkce_verifier_length' => env('AUTH_KIT_GOOGLE_PKCE_VERIFIER_LENGTH', 64),
+
+        /*
+        |----------------------------------------------------------------------
+        | Google OAuth Callback Presentation
+        |----------------------------------------------------------------------
+        |
+        | The callback is a browser round-trip: Google redirects the user's
+        | browser to the redirect_uri. The package always injects its own
+        | reserved props (`errorCode`, `message`, `errors`, and `user` on
+        | success). Configure only the presentation type and the target
+        | (Blade view name or Inertia component name).
+        |
+        | Supported types: "view" | "inertia".
+        |
+        */
+        'callback' => [
+            'type' => env('AUTH_KIT_GOOGLE_CALLBACK_TYPE', 'view'),
+            'target' => env('AUTH_KIT_GOOGLE_CALLBACK_TARGET', 'auth.google-callback'),
+        ],
     ],
 ];

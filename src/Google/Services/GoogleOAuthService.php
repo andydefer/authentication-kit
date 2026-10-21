@@ -4,21 +4,30 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Google\Services;
 
+use AndyDefer\Actions\Enums\HttpResponseType;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
+use AndyDefer\AuthenticationKit\Google\Contracts\GoogleAuthenticatable;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleAndroidCallbackData;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleRedirectData;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
+use AndyDefer\AuthenticationKit\Google\Records\GoogleAndroidCallbackRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleRedirectRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleStateRecord;
 use AndyDefer\AuthenticationKit\Google\Requests\GoogleAuthorizationRedirectRequest;
 use AndyDefer\AuthenticationKit\Google\Requests\GoogleTokenExchangeRequest;
 use AndyDefer\AuthenticationKit\Google\Responses\GoogleTokenExchangeResponse;
+use AndyDefer\AuthenticationKit\Mail\Contracts\MailAuthenticatable;
+use AndyDefer\DomainStructures\Utils\StrictAssociative;
+use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
+use AndyDefer\Nemesis\Records\NemesisTokenRecord;
 use AndyDefer\PhpClient\Clients\ClientService;
+use Illuminate\Database\Eloquent\Model;
 
 class GoogleOAuthService implements GoogleOAuthInterface
 {
@@ -28,6 +37,7 @@ class GoogleOAuthService implements GoogleOAuthInterface
         private readonly GooglePkceGenerator $pkceGenerator,
         private readonly GoogleStateStoreInterface $stateStore,
         private readonly GoogleIdTokenVerifier $idTokenVerifier,
+        private readonly NemesisInterface $nemesis,
     ) {}
 
     /**
@@ -145,11 +155,105 @@ class GoogleOAuthService implements GoogleOAuthInterface
      */
     public function onCallbackSuccess(GoogleCallbackData $data): ResponseFactory
     {
+        $type = $this->config->getGoogleCallbackResponseType();
+        $target = $this->config->getGoogleCallbackTarget();
+
+        return match ($type) {
+            HttpResponseType::VIEW => ResponseFactory::view($target, ['data' => $data]),
+            HttpResponseType::INERTIA => ResponseFactory::inertia($target, ['data' => $data]),
+            default => throw new \LogicException(
+                "Unsupported Google callback response type: {$type->value}"
+            ),
+        };
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function androidCallback(GoogleAndroidCallbackRecord $record): ResponseFactory
+    {
+        $this->beforeAndroidCallback($record);
+
+        $claims = $this->idTokenVerifier->verify(
+            idToken: $record->id_token,
+            expectedNonce: null,
+        );
+
+        if ($claims->emailVerified !== true) {
+            $this->afterAndroidCallbackFailed($record, ErrorCode::GOOGLE_CALLBACK_ERROR);
+
+            throw GoogleOAuthException::emailNotVerified();
+        }
+
+        $modelClass = $record->model_type;
+
+        if (! class_exists($modelClass)) {
+            $this->afterAndroidCallbackFailed($record, ErrorCode::GOOGLE_MODEL_NOT_FOUND);
+
+            throw GoogleOAuthException::modelNotFound($modelClass);
+        }
+
+        if (! is_subclass_of($modelClass, MailAuthenticatable::class)) {
+            $this->afterAndroidCallbackFailed($record, ErrorCode::GOOGLE_INVALID_MODEL);
+
+            throw GoogleOAuthException::invalidModel($modelClass);
+        }
+
+        if (! is_subclass_of($modelClass, GoogleAuthenticatable::class)) {
+            $this->afterAndroidCallbackFailed(
+                $record,
+                ErrorCode::GOOGLE_MODEL_NOT_GOOGLE_AUTHENTICATABLE,
+            );
+
+            throw GoogleOAuthException::modelNotGoogleAuthenticatable($modelClass);
+        }
+
+        /** @var (Model&MailAuthenticatable&GoogleAuthenticatable)|null $auth */
+        $auth = $modelClass::where('email', $claims->email)->first();
+        $isNewUser = $auth === null;
+
+        if ($isNewUser) {
+            /** @var Model&MailAuthenticatable&GoogleAuthenticatable $auth */
+            $auth = $modelClass::androidGenerate($claims);
+        }
+
+        $tokenRecord = NemesisTokenRecord::from([
+            'name' => 'auth-google-android',
+            'source' => 'google_android',
+            'metadata' => new StrictAssociative([
+                'auth_id' => $auth->getKey(),
+                'email' => $auth->getRawOriginal('email'),
+            ]),
+        ]);
+
+        [, $plainToken] = $this->nemesis->createWithPlainToken($tokenRecord, $auth);
+
+        $data = new GoogleAndroidCallbackData(
+            message: $isNewUser ? 'Registration successful' : 'Login successful',
+            auth: new StrictAssociative(
+                action_normalizer_chain(true)->normalize($auth->nemesisFormat())
+            ),
+            token: $plainToken,
+            modelType: $modelClass,
+            isNewUser: $isNewUser,
+            claims: $claims,
+        );
+
+        $this->afterAndroidCallback($record, $data);
+
+        return $this->onAndroidCallbackSuccess($data);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function onAndroidCallbackSuccess(GoogleAndroidCallbackData $data): ResponseFactory
+    {
         return ResponseFactory::json($data);
     }
 
     // ========================================================================
-    // HOOKS
+    // HOOKS — WEB FLOW
     // ========================================================================
 
     /**
@@ -184,6 +288,32 @@ class GoogleOAuthService implements GoogleOAuthInterface
      */
     protected function afterCallbackFailed(
         GoogleCallbackRecord $record,
+        ErrorCode $error,
+    ): void {}
+
+    // ========================================================================
+    // HOOKS — ANDROID FLOW
+    // ========================================================================
+
+    /**
+     * Hook called before handling the Android callback.
+     */
+    protected function beforeAndroidCallback(GoogleAndroidCallbackRecord $record): void {}
+
+    /**
+     * Hook called after the Android callback is successfully processed,
+     * right before onAndroidCallbackSuccess() decides the final response.
+     */
+    protected function afterAndroidCallback(
+        GoogleAndroidCallbackRecord $record,
+        GoogleAndroidCallbackData $data,
+    ): void {}
+
+    /**
+     * Hook called when the Android callback fails.
+     */
+    protected function afterAndroidCallbackFailed(
+        GoogleAndroidCallbackRecord $record,
         ErrorCode $error,
     ): void {}
 }

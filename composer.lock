@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "af385e258ef0015522de06955b8c5d60",
+    "content-hash": "08ab35b527cc30b06caca45e9a7c86b0",
     "packages": [
         {
             "name": "andydefer/algo-kit",
@@ -113,20 +113,20 @@
         },
         {
             "name": "andydefer/directive-forge",
-            "version": "v2.17.116",
+            "version": "v2.17.117",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/directive-forge.git",
-                "reference": "6c73572910fc47aeff8e07546e5b6b130803932e"
+                "reference": "17bf3b4717b20dbb227bd04aa213d27abba55bb0"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/directive-forge/zipball/6c73572910fc47aeff8e07546e5b6b130803932e",
-                "reference": "6c73572910fc47aeff8e07546e5b6b130803932e",
+                "url": "https://api.github.com/repos/andydefer/directive-forge/zipball/17bf3b4717b20dbb227bd04aa213d27abba55bb0",
+                "reference": "17bf3b4717b20dbb227bd04aa213d27abba55bb0",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-directive": "^3.67.16",
+                "andydefer/laravel-directive": "^3.67.17",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
                 "php": ">=8.1"
             },
@@ -167,9 +167,9 @@
             "description": "Code generation directives for Laravel - forge directives, actions, tasks, repositories, records and typed collections etc...",
             "support": {
                 "issues": "https://github.com/andydefer/directive-forge/issues",
-                "source": "https://github.com/andydefer/directive-forge/tree/v2.17.116"
+                "source": "https://github.com/andydefer/directive-forge/tree/v2.17.117"
             },
-            "time": "2026-10-17T05:46:50+00:00"
+            "time": "2026-10-20T14:29:11+00:00"
         },
         {
             "name": "andydefer/domain-structures",
@@ -227,16 +227,16 @@
         },
         {
             "name": "andydefer/laravel-actions",
-            "version": "v2.12.7",
+            "version": "v2.13.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-actions.git",
-                "reference": "2fad6bf6565dfee645632131e6df2cf243e20e8e"
+                "reference": "736f8c015c73c345c933a14eabd859b50044bf88"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-actions/zipball/2fad6bf6565dfee645632131e6df2cf243e20e8e",
-                "reference": "2fad6bf6565dfee645632131e6df2cf243e20e8e",
+                "url": "https://api.github.com/repos/andydefer/laravel-actions/zipball/736f8c015c73c345c933a14eabd859b50044bf88",
+                "reference": "736f8c015c73c345c933a14eabd859b50044bf88",
                 "shasum": ""
             },
             "require": {
@@ -281,26 +281,26 @@
             "description": "Action-oriented architecture for Laravel applications",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-actions/issues",
-                "source": "https://github.com/andydefer/laravel-actions/tree/v2.12.7"
+                "source": "https://github.com/andydefer/laravel-actions/tree/v2.13.0"
             },
-            "time": "2026-10-16T20:56:11+00:00"
+            "time": "2026-10-21T08:54:25+00:00"
         },
         {
             "name": "andydefer/laravel-cluster",
-            "version": "v0.23.32",
+            "version": "v0.23.33",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-cluster.git",
-                "reference": "71e18695e681e5b3b1ba31676c2f08685e92c524"
+                "reference": "320082eb2e5af76a311b471ce44324e7b88868e5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-cluster/zipball/71e18695e681e5b3b1ba31676c2f08685e92c524",
-                "reference": "71e18695e681e5b3b1ba31676c2f08685e92c524",
+                "url": "https://api.github.com/repos/andydefer/laravel-cluster/zipball/320082eb2e5af76a311b471ce44324e7b88868e5",
+                "reference": "320082eb2e5af76a311b471ce44324e7b88868e5",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-actions": "^2.12.7",
+                "andydefer/laravel-actions": "^2.13.0",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
                 "php": "^8.1"
             },
@@ -334,27 +334,27 @@
             "description": "A powerful cluster query parser and filter for Laravel with JSON column support",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-cluster/issues",
-                "source": "https://github.com/andydefer/laravel-cluster/tree/v0.23.32"
+                "source": "https://github.com/andydefer/laravel-cluster/tree/v0.23.33"
             },
-            "time": "2026-10-17T05:28:16+00:00"
+            "time": "2026-10-21T08:55:40+00:00"
         },
         {
             "name": "andydefer/laravel-directive",
-            "version": "v3.67.16",
+            "version": "v3.67.17",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-directive.git",
-                "reference": "10cee74555f26c5c8294bb44a1467b7f84297f3c"
+                "reference": "a189f9eb78ae0e5bdb3419b5cdf5f0a3ed21d98a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-directive/zipball/10cee74555f26c5c8294bb44a1467b7f84297f3c",
-                "reference": "10cee74555f26c5c8294bb44a1467b7f84297f3c",
+                "url": "https://api.github.com/repos/andydefer/laravel-directive/zipball/a189f9eb78ae0e5bdb3419b5cdf5f0a3ed21d98a",
+                "reference": "a189f9eb78ae0e5bdb3419b5cdf5f0a3ed21d98a",
                 "shasum": ""
             },
             "require": {
                 "andydefer/algo-kit": "^0.9.30",
-                "andydefer/laravel-jsonl": "^0.8.49",
+                "andydefer/laravel-jsonl": "^0.8.50",
                 "andydefer/php-console": "^1.7.22",
                 "andydefer/php-signature-parser": "^0.12.12",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
@@ -404,22 +404,22 @@
             "description": "A flexible CLI command system for Laravel that breaks free from Artisan's constraints. Directives introduces a clean separation between what your command does (business logic) and how it's presented (output/UI).",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-directive/issues",
-                "source": "https://github.com/andydefer/laravel-directive/tree/v3.67.16"
+                "source": "https://github.com/andydefer/laravel-directive/tree/v3.67.17"
             },
-            "time": "2026-10-17T05:43:33+00:00"
+            "time": "2026-10-20T14:26:42+00:00"
         },
         {
             "name": "andydefer/laravel-jsonl",
-            "version": "v0.8.49",
+            "version": "v0.8.50",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-jsonl.git",
-                "reference": "13c65f9c922ae7aa058c0f22f827ca79d45b2790"
+                "reference": "9e311e7c267c38e440ce21281aad90bb1c343907"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-jsonl/zipball/13c65f9c922ae7aa058c0f22f827ca79d45b2790",
-                "reference": "13c65f9c922ae7aa058c0f22f827ca79d45b2790",
+                "url": "https://api.github.com/repos/andydefer/laravel-jsonl/zipball/9e311e7c267c38e440ce21281aad90bb1c343907",
+                "reference": "9e311e7c267c38e440ce21281aad90bb1c343907",
                 "shasum": ""
             },
             "require": {
@@ -459,26 +459,26 @@
             "description": "JSONL storage service for Laravel - write, read, query, and clean JSON Lines files with custom path strategies",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-jsonl/issues",
-                "source": "https://github.com/andydefer/laravel-jsonl/tree/v0.8.49"
+                "source": "https://github.com/andydefer/laravel-jsonl/tree/v0.8.50"
             },
-            "time": "2026-10-16T20:49:56+00:00"
+            "time": "2026-10-20T14:26:03+00:00"
         },
         {
             "name": "andydefer/laravel-logger",
-            "version": "v3.9.50",
+            "version": "v3.10.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-logger.git",
-                "reference": "32e3ec9819450a2a3a9f6b394a6de3a701a67c87"
+                "reference": "add19170764bcf796f6b6143921e865ac6e25f96"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-logger/zipball/32e3ec9819450a2a3a9f6b394a6de3a701a67c87",
-                "reference": "32e3ec9819450a2a3a9f6b394a6de3a701a67c87",
+                "url": "https://api.github.com/repos/andydefer/laravel-logger/zipball/add19170764bcf796f6b6143921e865ac6e25f96",
+                "reference": "add19170764bcf796f6b6143921e865ac6e25f96",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-jsonl": "^0.8.49",
+                "andydefer/laravel-jsonl": "^0.8.50",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
                 "php": ">=8.1"
             },
@@ -519,28 +519,28 @@
             "description": "A structured logging package for Laravel that writes logs in JSONL format (JSON Lines).",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-logger/issues",
-                "source": "https://github.com/andydefer/laravel-logger/tree/v3.9.50"
+                "source": "https://github.com/andydefer/laravel-logger/tree/v3.10.0"
             },
-            "time": "2026-10-17T05:27:38+00:00"
+            "time": "2026-10-20T14:30:53+00:00"
         },
         {
             "name": "andydefer/laravel-nemesis",
-            "version": "v1.22.23",
+            "version": "v1.23.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-nemesis.git",
-                "reference": "451f0887ccde63863c966de9d420dc5f3bf8d92b"
+                "reference": "a5ee1f72d3519266b453211b2b80d3e6df154e81"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-nemesis/zipball/451f0887ccde63863c966de9d420dc5f3bf8d92b",
-                "reference": "451f0887ccde63863c966de9d420dc5f3bf8d92b",
+                "url": "https://api.github.com/repos/andydefer/laravel-nemesis/zipball/a5ee1f72d3519266b453211b2b80d3e6df154e81",
+                "reference": "a5ee1f72d3519266b453211b2b80d3e6df154e81",
                 "shasum": ""
             },
             "require": {
                 "andydefer/data-validator": "^1.0.4",
-                "andydefer/laravel-directive": "^3.67.16",
-                "andydefer/laravel-repository": "^2.17.36",
+                "andydefer/laravel-directive": "^3.67.17",
+                "andydefer/laravel-repository": "^2.17.37",
                 "jenssegers/agent": "^2.6",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
                 "php": ">=8.1"
@@ -575,27 +575,27 @@
             "description": "Nemesis: Multi-model token-based authentication for Laravel",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-nemesis/issues",
-                "source": "https://github.com/andydefer/laravel-nemesis/tree/v1.22.23"
+                "source": "https://github.com/andydefer/laravel-nemesis/tree/v1.23.2"
             },
-            "time": "2026-10-17T05:49:23+00:00"
+            "time": "2026-10-21T08:59:53+00:00"
         },
         {
             "name": "andydefer/laravel-notification",
-            "version": "v1.19.29",
+            "version": "v1.19.33",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-notification.git",
-                "reference": "7b66e58f83eb8ac43c90b6eb3c6b0a030d833c84"
+                "reference": "06b89dd1c8eac7a771f31e28bfd99e4fcfbdce6c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-notification/zipball/7b66e58f83eb8ac43c90b6eb3c6b0a030d833c84",
-                "reference": "7b66e58f83eb8ac43c90b6eb3c6b0a030d833c84",
+                "url": "https://api.github.com/repos/andydefer/laravel-notification/zipball/06b89dd1c8eac7a771f31e28bfd99e4fcfbdce6c",
+                "reference": "06b89dd1c8eac7a771f31e28bfd99e4fcfbdce6c",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-nemesis": "^1.22.23",
-                "andydefer/laravel-task": "^4.15.33",
+                "andydefer/laravel-nemesis": "^1.23.2",
+                "andydefer/laravel-task": "^4.15.36",
                 "google/apiclient": "^2.20",
                 "minishlink/web-push": "^11.0",
                 "php": "^8.2",
@@ -637,26 +637,26 @@
             "description": "Extensible polymorphic notification system for Laravel with multi-channel support (Mail, Database, SMS, WhatsApp, etc.)",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-notification/issues",
-                "source": "https://github.com/andydefer/laravel-notification/tree/v1.19.29"
+                "source": "https://github.com/andydefer/laravel-notification/tree/v1.19.33"
             },
-            "time": "2026-10-17T05:53:09+00:00"
+            "time": "2026-10-21T09:01:49+00:00"
         },
         {
             "name": "andydefer/laravel-otp",
-            "version": "v1.3.20",
+            "version": "v1.3.21",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-otp.git",
-                "reference": "061a8626d0f12823cdef79d8ce143ff1e5df272d"
+                "reference": "cf9864921473a1c0137d62bb47bf923b9750df57"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-otp/zipball/061a8626d0f12823cdef79d8ce143ff1e5df272d",
-                "reference": "061a8626d0f12823cdef79d8ce143ff1e5df272d",
+                "url": "https://api.github.com/repos/andydefer/laravel-otp/zipball/cf9864921473a1c0137d62bb47bf923b9750df57",
+                "reference": "cf9864921473a1c0137d62bb47bf923b9750df57",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-repository": "^2.17.36",
+                "andydefer/laravel-repository": "^2.17.37",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
                 "php": "^8.2"
             },
@@ -697,26 +697,26 @@
             "description": "Laravel package providing OTP (One-Time Password) management with Repository pattern, DTOs, Enums, and Value Objects.",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-otp/issues",
-                "source": "https://github.com/andydefer/laravel-otp/tree/v1.3.20"
+                "source": "https://github.com/andydefer/laravel-otp/tree/v1.3.21"
             },
-            "time": "2026-10-17T05:38:38+00:00"
+            "time": "2026-10-21T08:58:35+00:00"
         },
         {
             "name": "andydefer/laravel-repository",
-            "version": "v2.17.36",
+            "version": "v2.17.37",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-repository.git",
-                "reference": "601f631dca0d34704dd3268b445d95eb7eece644"
+                "reference": "a134908918b7a55c02d5cc51dfa338ca60f430cc"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-repository/zipball/601f631dca0d34704dd3268b445d95eb7eece644",
-                "reference": "601f631dca0d34704dd3268b445d95eb7eece644",
+                "url": "https://api.github.com/repos/andydefer/laravel-repository/zipball/a134908918b7a55c02d5cc51dfa338ca60f430cc",
+                "reference": "a134908918b7a55c02d5cc51dfa338ca60f430cc",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-cluster": "^0.23.32",
+                "andydefer/laravel-cluster": "^0.23.33",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
                 "php": "^8.1"
             },
@@ -752,28 +752,28 @@
             "description": "A lightweight, type-safe repository pattern implementation for Laravel",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-repository/issues",
-                "source": "https://github.com/andydefer/laravel-repository/tree/v2.17.36"
+                "source": "https://github.com/andydefer/laravel-repository/tree/v2.17.37"
             },
-            "time": "2026-10-17T05:33:40+00:00"
+            "time": "2026-10-21T08:56:23+00:00"
         },
         {
             "name": "andydefer/laravel-task",
-            "version": "v4.15.33",
+            "version": "v4.15.36",
             "source": {
                 "type": "git",
                 "url": "https://github.com/andydefer/laravel-task.git",
-                "reference": "af46391247e1a6c3459898289553b934ba33408d"
+                "reference": "be637d513aece8bcc24d0794df33295be7dddbd3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/andydefer/laravel-task/zipball/af46391247e1a6c3459898289553b934ba33408d",
-                "reference": "af46391247e1a6c3459898289553b934ba33408d",
+                "url": "https://api.github.com/repos/andydefer/laravel-task/zipball/be637d513aece8bcc24d0794df33295be7dddbd3",
+                "reference": "be637d513aece8bcc24d0794df33295be7dddbd3",
                 "shasum": ""
             },
             "require": {
-                "andydefer/laravel-directive": "^3.67.16",
-                "andydefer/laravel-logger": "^3.9.50",
-                "andydefer/laravel-repository": "^2.17.36",
+                "andydefer/laravel-directive": "^3.67.17",
+                "andydefer/laravel-logger": "^3.10.0",
+                "andydefer/laravel-repository": "^2.17.37",
                 "laravel/framework": "^12.0|^13.0|^14.0|^15.0",
                 "php": ">=8.1",
                 "ramsey/uuid": "^4.7",
@@ -812,9 +812,9 @@
             "description": "A lightweight, file-based task system for Laravel with async execution, recurring tasks, and JSONL storage",
             "support": {
                 "issues": "https://github.com/andydefer/laravel-task/issues",
-                "source": "https://github.com/andydefer/laravel-task/tree/v4.15.33"
+                "source": "https://github.com/andydefer/laravel-task/tree/v4.15.36"
             },
-            "time": "2026-10-17T05:51:05+00:00"
+            "time": "2026-10-21T09:00:14+00:00"
         },
         {
             "name": "andydefer/php-client",

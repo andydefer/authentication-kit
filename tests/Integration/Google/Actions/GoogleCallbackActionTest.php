@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Integration\Google\Actions;
 
+use AndyDefer\Actions\Enums\HttpResponseType;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleCallbackAction;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
 use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
+use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleStateRecord;
 use AndyDefer\AuthenticationKit\Google\Requests\GoogleCallbackRequest;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleIdTokenVerifier;
@@ -22,6 +25,7 @@ use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response as GuzzleResponse;
+use Illuminate\Testing\TestResponse;
 use Mockery;
 
 final class GoogleCallbackActionTest extends IntegrationTestCase
@@ -56,6 +60,11 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
 
                 'state_lifetime' => 600,
                 'pkce_verifier_length' => 64,
+
+                'callback' => [
+                    'type' => 'view',
+                    'target' => 'auth.google-callback',
+                ],
             ],
         ]);
 
@@ -67,6 +76,16 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             'cookie_httponly' => false,
             'cookie_samesite' => 'lax',
         ]);
+
+        // Enregistre un dossier de vues de test + la vue attendue
+        $viewDir = sys_get_temp_dir().'/auth-kit-test-views-'.uniqid();
+        mkdir($viewDir.'/auth', 0777, true);
+        file_put_contents(
+            $viewDir.'/auth/google-callback.blade.php',
+            'OK'
+        );
+        $this->app['config']->set('view.paths', [$viewDir]);
+        $this->app['view']->addLocation($viewDir);
 
         $this->app->singleton(
             AuthenticationKitConfigInterface::class,
@@ -98,7 +117,7 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->app->forgetInstance(GoogleOAuthService::class);
         $this->app->forgetInstance(GoogleCallbackAction::class);
 
-        $this->app['router']->get('/api/google-callback', action_route(
+        $this->app['router']->get('/google-callback', action_route(
             GoogleCallbackRequest::class,
             GoogleCallbackAction::class
         ));
@@ -164,150 +183,175 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             ->andReturn($claims);
     }
 
+    private function assertCallbackErrorView(TestResponse $response): void
+    {
+        $response->assertViewIs('auth.google-callback');
+        $response->assertViewHas('error');
+    }
+
+    /**
+     * Invokes the action directly, bypassing the HTTP request validation,
+     * so we can inspect the ResponseFactory type without routing.
+     */
+    private function runAction(string $code, string $state)
+    {
+        $action = $this->app->make(GoogleCallbackAction::class);
+
+        $record = GoogleCallbackRecord::from([
+            'code' => $code,
+            'state' => $state,
+        ]);
+
+        return $action->run($record);
+    }
+
     // ============================================================================
     // Tests succès
     // ============================================================================
 
-    public function test_callback_returns_google_tokens_on_valid_flow(): void
+    public function test_callback_renders_configured_view_on_valid_flow(): void
     {
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
         ]));
 
         $response->assertStatus(200);
-        $response->assertJsonStructure([
-            'idToken',
-            'accessToken',
-            'expiresIn',
-            'tokenType',
-            'scope',
-            'claims',
-            'operation',
-        ]);
+        $response->assertViewIs('auth.google-callback');
     }
 
-    public function test_callback_returns_correct_token_values(): void
+    public function test_callback_returns_view_type_on_success(): void
     {
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
-            'code' => 'auth-code',
-            'state' => 'valid-state',
-        ]));
+        $factory = $this->runAction('auth-code', 'valid-state');
 
-        $response->assertStatus(200);
-        $response->assertJson([
-            'idToken' => 'header.payload.signature',
-            'accessToken' => 'access-token-xyz',
-            'expiresIn' => 3600,
-            'tokenType' => 'Bearer',
-            'scope' => 'openid email profile',
-        ]);
+        $this->assertSame(HttpResponseType::VIEW, $factory->getType());
     }
 
-    public function test_callback_returns_verified_claims(): void
+    public function test_callback_returns_inertia_type_when_configured(): void
     {
+        $this->app['config']->set(
+            'authentication-kit.google.callback.type',
+            HttpResponseType::INERTIA->value
+        );
+        $this->app['config']->set(
+            'authentication-kit.google.callback.target',
+            'Auth/GoogleCallback'
+        );
+
+        $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
+        $this->app->forgetInstance(AuthenticationKitConfig::class);
+        $this->app->forgetInstance(GoogleOAuthService::class);
+        $this->app->forgetInstance(GoogleCallbackAction::class);
+
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
-            'code' => 'auth-code',
-            'state' => 'valid-state',
-        ]));
+        $factory = $this->runAction('auth-code', 'valid-state');
 
-        $response->assertStatus(200);
-        $response->assertJsonPath('claims.sub', 'sub-123');
-        $response->assertJsonPath('claims.email', 'user@example.com');
-        $response->assertJsonPath('claims.emailVerified', true);
+        $this->assertSame(HttpResponseType::INERTIA, $factory->getType());
+        $this->assertSame('Auth/GoogleCallback', $factory->getContent()['component']);
     }
 
-    public function test_callback_returns_operation_login(): void
+    public function test_callback_renders_operation_login(): void
     {
         $this->prepareValidState(OperationType::LOGIN);
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
         ]));
 
         $response->assertStatus(200);
-        $response->assertJsonPath('operation', OperationType::LOGIN->value);
+        $response->assertViewIs('auth.google-callback');
+
+        /** @var GoogleCallbackData $data */
+        $data = $response->viewData('data');
+
+        $this->assertInstanceOf(GoogleCallbackData::class, $data);
+        $this->assertSame(OperationType::LOGIN, $data->operation);
     }
 
-    public function test_callback_returns_operation_register(): void
+    public function test_callback_renders_operation_register(): void
     {
         $this->prepareValidState(OperationType::REGISTER);
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
         ]));
 
         $response->assertStatus(200);
-        $response->assertJsonPath('operation', OperationType::REGISTER->value);
+        $response->assertViewIs('auth.google-callback');
+
+        /** @var GoogleCallbackData $data */
+        $data = $response->viewData('data');
+
+        $this->assertInstanceOf(GoogleCallbackData::class, $data);
+        $this->assertSame(OperationType::REGISTER, $data->operation);
     }
 
     // ============================================================================
     // Tests d'erreur — Google fournit une erreur
     // ============================================================================
 
-    public function test_callback_returns_error_when_google_returns_error(): void
+    public function test_callback_renders_error_view_when_google_returns_error(): void
     {
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'state' => 'any',
             'error' => 'access_denied',
             'error_description' => 'User denied access',
         ]));
 
-        $response->assertStatus(400);
-        $response->assertJson([
-            'errorCode' => 'GOOGLE_PROVIDER_ERROR',
-        ]);
+        $response->assertStatus(200);
+        $this->assertCallbackErrorView($response);
     }
 
-    public function test_callback_returns_error_when_user_denies_access(): void
+    public function test_callback_error_prop_has_provider_error_code_on_google_error(): void
     {
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'state' => 'any',
             'error' => 'access_denied',
             'error_description' => 'The user denied the request',
         ]));
 
-        $response->assertStatus(400);
-        $response->assertJsonPath('errorCode', 'GOOGLE_PROVIDER_ERROR');
-        $response->assertJsonPath('message', 'The user denied the request');
+        $error = $response->viewData('error');
+
+        $this->assertSame('GOOGLE_PROVIDER_ERROR', $error->errorCode);
+        $this->assertSame('The user denied the request', $error->message);
     }
 
     // ============================================================================
     // Tests d'erreur — state invalide
     // ============================================================================
 
-    public function test_callback_returns_error_when_state_is_unknown(): void
+    public function test_callback_renders_error_view_when_state_is_unknown(): void
     {
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'unknown-state',
         ]));
 
-        $response->assertStatus(500);
-        $response->assertJson([
-            'errorCode' => 'GOOGLE_CALLBACK_ERROR',
-        ]);
+        $response->assertStatus(200);
+        $this->assertCallbackErrorView($response);
+
+        $error = $response->viewData('error');
+        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
 
-    public function test_callback_returns_error_when_state_is_expired(): void
+    public function test_callback_renders_error_view_when_state_is_expired(): void
     {
         /** @var GoogleStateStoreInterface $store */
         $store = $this->app->make(GoogleStateStoreInterface::class);
@@ -319,44 +363,23 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             operation: OperationType::LOGIN,
         ), 600);
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'expired-state',
         ]));
 
-        $response->assertStatus(500);
-        $response->assertJson([
-            'errorCode' => 'GOOGLE_CALLBACK_ERROR',
-        ]);
-    }
+        $response->assertStatus(200);
+        $this->assertCallbackErrorView($response);
 
-    // ============================================================================
-    // Tests d'erreur — validation
-    // ============================================================================
-
-    public function test_callback_returns_error_when_code_is_missing(): void
-    {
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
-            'state' => 'valid-state',
-        ]));
-
-        $response->assertStatus(422);
-    }
-
-    public function test_callback_returns_error_when_state_is_missing(): void
-    {
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
-            'code' => 'auth-code',
-        ]));
-
-        $response->assertStatus(422);
+        $error = $response->viewData('error');
+        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
 
     // ============================================================================
     // Tests d'erreur — token exchange Google
     // ============================================================================
 
-    public function test_callback_returns_error_when_google_token_exchange_fails(): void
+    public function test_callback_renders_error_view_when_google_token_exchange_fails(): void
     {
         $this->prepareValidState();
 
@@ -369,26 +392,25 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             ])
         ));
 
-        $this->idTokenVerifierMock
-            ->shouldReceive('verify')
-            ->never();
+        $this->idTokenVerifierMock->shouldReceive('verify')->never();
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'expired-code',
             'state' => 'valid-state',
         ]));
 
-        $response->assertStatus(500);
-        $response->assertJson([
-            'errorCode' => 'GOOGLE_CALLBACK_ERROR',
-        ]);
+        $response->assertStatus(200);
+        $this->assertCallbackErrorView($response);
+
+        $error = $response->viewData('error');
+        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
 
     // ============================================================================
     // Tests d'erreur — vérification id_token
     // ============================================================================
 
-    public function test_callback_returns_error_when_id_token_verification_fails(): void
+    public function test_callback_renders_error_view_when_id_token_verification_fails(): void
     {
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
@@ -399,18 +421,19 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             ->with('header.payload.signature', 'nonce-xyz')
             ->andThrow(GoogleOAuthException::idTokenSignatureInvalid());
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
         ]));
 
-        $response->assertStatus(500);
-        $response->assertJson([
-            'errorCode' => 'GOOGLE_CALLBACK_ERROR',
-        ]);
+        $response->assertStatus(200);
+        $this->assertCallbackErrorView($response);
+
+        $error = $response->viewData('error');
+        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
 
-    public function test_callback_returns_error_when_email_is_not_verified(): void
+    public function test_callback_renders_error_view_when_email_is_not_verified(): void
     {
         $this->prepareValidState();
         $this->queueTokenExchangeSuccess();
@@ -421,15 +444,16 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
             ->with('header.payload.signature', 'nonce-xyz')
             ->andThrow(GoogleOAuthException::emailNotVerified());
 
-        $response = $this->getJson('/api/google-callback?'.http_build_query([
+        $response = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
         ]));
 
-        $response->assertStatus(500);
-        $response->assertJson([
-            'errorCode' => 'GOOGLE_CALLBACK_ERROR',
-        ]);
+        $response->assertStatus(200);
+        $this->assertCallbackErrorView($response);
+
+        $error = $response->viewData('error');
+        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
 
     // ============================================================================
@@ -442,19 +466,22 @@ final class GoogleCallbackActionTest extends IntegrationTestCase
         $this->queueTokenExchangeSuccess();
         $this->configureValidIdTokenVerifier();
 
-        $first = $this->getJson('/api/google-callback?'.http_build_query([
+        $first = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
         ]));
 
         $first->assertStatus(200);
 
-        $second = $this->getJson('/api/google-callback?'.http_build_query([
+        $second = $this->get('/google-callback?'.http_build_query([
             'code' => 'auth-code',
             'state' => 'valid-state',
         ]));
 
-        $second->assertStatus(500);
-        $second->assertJson(['errorCode' => 'GOOGLE_CALLBACK_ERROR']);
+        $second->assertStatus(200);
+        $this->assertCallbackErrorView($second);
+
+        $error = $second->viewData('error');
+        $this->assertSame('GOOGLE_CALLBACK_ERROR', $error->errorCode);
     }
 }

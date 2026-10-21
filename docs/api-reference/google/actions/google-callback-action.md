@@ -2,247 +2,248 @@
 
 ## Description
 
-Action ADR qui traite le retour de Google sur le endpoint callback OAuth. Elle délègue au `GoogleOAuthService`, transforme les exceptions en réponses HTTP standardisées, et retourne les données du callback sous forme JSON.
+Action HTTP qui traite le retour de Google après consentement OAuth. Elle délègue la logique métier au `GoogleOAuthService` et force la production d'une réponse **Web** (`VIEW` ou `INERTIA`), jamais JSON. Les erreurs sont rendues dans la même vue / page Inertia avec la prop `error` de type `ErrorResponseData`.
 
-## Hiérarchie
+## Hiérarchie / Implémentations
 
 ```
-AbstractAction
+AbstractAction (AndyDefer\Actions\Actions)
     └── GoogleCallbackAction
 ```
 
-Classe `final`. Utilise le cycle de vie `before → handle → after` d'`AbstractAction`.
+Dépendances injectées :
+
+- `GoogleOAuthInterface` — service OAuth Google (par défaut `GoogleOAuthService`).
+- `AuthenticationKitConfigInterface` — configuration (`callback.type`, `callback.target`).
 
 ## Rôle principal
 
-Reçoit un `GoogleCallbackRecord` (code, state, erreurs éventuelles), appelle `GoogleOAuthService::callback()`, et convertit le résultat en `ResponseFactory`. C'est la **couche HTTP** du callback OAuth.
+Cette action est le point d'entrée HTTP du callback OAuth. Elle :
 
-L'Action ne contient **aucune logique métier** : elle orchestre et adapte les erreurs.
+1. Vérifie que le record reçu est bien un `GoogleCallbackRecord` (défense en profondeur).
+2. Délègue au `GoogleOAuthService::callback()`.
+3. **Impose** que la réponse produite soit de type `VIEW` ou `INERTIA` — tout autre type est rejeté.
+4. Convertit **toute exception** (`GoogleOAuthException`, `UnexpectedValueException`, `GuzzleException`, etc.) en réponse Web avec `ErrorResponseData` normalisé dans la prop `error`.
+5. Utilise le même `target` (vue Blade ou composant Inertia) pour le succès et les erreurs, pour que le front n'ait qu'un seul point d'entrée.
 
 ## Installation
 
-Enregistrée dans `GoogleServiceProvider` sous son FQCN pour être résolue via `action_route()`.
-
-Route typique :
+`GoogleCallbackAction` est enregistrée dans le conteneur par `GoogleServiceProvider` :
 
 ```php
-Route::get('/api/google-callback', action_route(
-    GoogleCallbackRequest::class,
-    GoogleCallbackAction::class,
-));
+$this->app->singleton(
+    abstract: GoogleCallbackAction::class,
+    concrete: function ($app): GoogleCallbackAction {
+        return new GoogleCallbackAction(
+            googleOAuth: $app->make(GoogleOAuthService::class),
+            config: $app->make(AuthenticationKitConfigInterface::class),
+        );
+    }
+);
+```
+
+Configuration requise dans `config/authentication-kit.php` :
+
+```php
+'google' => [
+    'callback' => [
+        'type'   => 'view',                     // ou "inertia"
+        'target' => 'auth.google-callback',     // nom de la vue / composant
+    ],
+],
 ```
 
 ## API / Méthodes publiques
 
-### `__construct(GoogleOAuthService $googleOAuth)`
+### `run(AbstractRecord $record): ResponseFactory` (héritée)
+
+Point d'entrée hérité de `AbstractAction`. Exécute le cycle `before() → handle() → after() → ResponseFactory`.
 
 | Paramètre | Type | Description |
 |-----------|------|-------------|
-| `$googleOAuth` | `GoogleOAuthService` | Service qui exécute la logique OAuth |
+| `$record` | `AbstractRecord` | Doit être un `GoogleCallbackRecord`, sinon `handle()` produit une réponse d'erreur. |
+
+**Retourne :** `ResponseFactory` — toujours `VIEW` ou `INERTIA`.
+
+**Exceptions :** `InvalidArgumentException` — si `$record` n'est pas un `GoogleCallbackRecord` (levé dans `before()` avant toute autre logique).
 
 **Exemple :**
 
 ```php
-$action = new GoogleCallbackAction(
-    googleOAuth: app(GoogleOAuthService::class),
-);
+<?php
+
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Google\Actions\GoogleCallbackAction;
+use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
+
+/** @var GoogleCallbackAction $action */
+$record = GoogleCallbackRecord::from([
+    'code'  => '4/0AX4Xf...',
+    'state' => 'abc123',
+]);
+
+$factory = $action->run($record);
+// → ResponseFactory de type VIEW ou INERTIA
 ```
 
----
+### `handle(AbstractRecord $record): ResponseFactory` (protégée)
 
-### `run(AbstractRecord $record): ResponseFactory`
+Méthode protégée implémentée par l'action. Le contrat : produire une réponse Web.
 
-Point d'entrée hérité d'`AbstractAction`. Exécute `before()`, `handle()`, puis `after()`.
+**Comportement observable :**
 
----
+- Succès → retourne directement la `ResponseFactory` produite par le service (déjà validée `VIEW`/`INERTIA`).
+- `GoogleOAuthException` avec `isProviderError() === true` → `GOOGLE_PROVIDER_ERROR`.
+- `GoogleOAuthException` autre → `GOOGLE_CALLBACK_ERROR`.
+- `UnexpectedValueException` (type de réponse invalide) → `GOOGLE_CALLBACK_UNEXPECTED_ERROR`.
+- `GuzzleException` directe ou encapsulée → `GOOGLE_CALLBACK_ERROR`.
+- Autres `Exception` → `GOOGLE_CALLBACK_UNEXPECTED_ERROR`.
 
-### `before(AbstractRecord $record): void` (protected)
+Chaque cas d'erreur produit une `ResponseFactory::view()` ou `ResponseFactory::inertia()` avec la prop `error` (voir plus bas).
 
-Vérifie que le record est bien un `GoogleCallbackRecord`.
+### `before(AbstractRecord $record): void` (protégée, hook hérité)
 
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `$record` | `AbstractRecord` | Le record à valider |
-
-**Exceptions :** `InvalidArgumentException` — si `$record` n'est pas un `GoogleCallbackRecord`.
-
-**Exemple :**
-
-```php
-// Ne devrait jamais arriver via action_route(), mais protège contre un mauvais usage direct
-$action->run(new SomeOtherRecord()); // → InvalidArgumentException
-```
-
----
-
-### `handle(AbstractRecord $record): ResponseFactory` (protected)
-
-Exécute le callback OAuth et retourne la réponse HTTP.
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `$record` | `AbstractRecord` | Doit être un `GoogleCallbackRecord` |
-
-**Retourne :** `ResponseFactory` — toujours, quelle que soit l'issue.
-
-| Cas | Status HTTP | ErrorCode | Corps |
-|-----|-------------|-----------|-------|
-| Succès | 200 | — | `GoogleCallbackData` (JSON) |
-| Record invalide | 500 | `INVALID_RECORD_TYPE` | Erreur standardisée |
-| Erreur Google (`access_denied`, etc.) | 400 | `GOOGLE_PROVIDER_ERROR` | Erreur standardisée |
-| Autre erreur `GoogleOAuthException` | 500 | `GOOGLE_CALLBACK_ERROR` | Erreur standardisée |
-| Exception générique | 500 | `GOOGLE_CALLBACK_ERROR` | Erreur standardisée |
-
-**Exemple :**
-
-```php
-$response = $action->run(new GoogleCallbackRecord(
-    code: 'auth-code',
-    state: 'state-abc',
-));
-```
+Garde-fou de type : lève `InvalidArgumentException` si `$record` n'est pas un `GoogleCallbackRecord`.
 
 ## Cas d'utilisation
 
-### Cas 1 : Callback réussi
-
-Google redirige l'utilisateur avec un `code` et un `state` valides.
+### Cas 1 : Route HTTP `/auth/google/callback`
 
 ```php
-// GET /api/google-callback?code=xxx&state=yyy
+<?php
 
-// Réponse 200 :
-// {
-//     "idToken": "eyJhbGciOiJSUzI1NiIs...",
-//     "accessToken": "ya29.a0AfH6...",
-//     "expiresIn": 3599,
-//     "tokenType": "Bearer",
-//     "scope": "openid email profile",
-//     "claims": {
-//         "sub": "108234...",
-//         "email": "user@example.com",
-//         "emailVerified": true,
-//         "iss": "https://accounts.google.com",
-//         "aud": "xxx.apps.googleusercontent.com",
-//         "exp": 1791894290,
-//         "iat": 1791890690,
-//         "nonce": "nonce-xyz",
-//         "name": "John Doe",
-//         "picture": "https://lh3.googleusercontent.com/...",
-//         "locale": "fr",
-//         "hd": null
-//     }
-// }
+declare(strict_types=1);
+
+use AndyDefer\AuthenticationKit\Google\Actions\GoogleCallbackAction;
+use AndyDefer\AuthenticationKit\Google\Requests\GoogleCallbackRequest;
+use function action_route;
+
+Route::get(
+    '/auth/google/callback',
+    action_route(GoogleCallbackRequest::class, GoogleCallbackAction::class)
+)->name('google.callback');
 ```
 
-### Cas 2 : Refus utilisateur
-
-L'utilisateur clique sur « Refuser » dans la consent screen Google.
+### Cas 2 : Override du target selon le contexte
 
 ```php
-// GET /api/google-callback?state=yyy&error=access_denied&error_description=The+user+denied+the+request
+<?php
 
-// Réponse 400 :
-// {
-//     "message": "The user denied the request",
-//     "status": 400,
-//     "errorCode": "GOOGLE_PROVIDER_ERROR",
-//     "errors": null
-// }
+declare(strict_types=1);
+
+// config/authentication-kit.php
+'google' => [
+    'callback' => [
+        'type'   => 'inertia',
+        'target' => 'Auth/GoogleCallback',
+    ],
+],
 ```
 
-### Cas 3 : State invalide ou expiré
+Toutes les réponses (succès **et** erreurs) sont rendues par le composant Inertia `Auth/GoogleCallback`. Le composant reçoit :
 
-Le callback arrive avec un state inconnu (rejeu, CSRF, expiration).
+- sur succès : `data` (`GoogleCallbackData`)
+- sur erreur  : `error` (`ErrorResponseData`)
 
-```php
-// Réponse 500 :
-// {
-//     "message": "Google OAuth state not found",
-//     "status": 500,
-//     "errorCode": "GOOGLE_CALLBACK_ERROR",
-//     "errors": null
-// }
-```
+### Cas 3 : Propagation d'erreur Guzzle encapsulée
+
+Le client HTTP utilisé (`AndyDefer\PhpClient\Clients\ClientService`) peut encapsuler une `GuzzleException` dans une `RuntimeException`. L'action parcourt jusqu'à **5 niveaux** de `getPrevious()` pour identifier la cause réelle et la classer comme `GOOGLE_CALLBACK_ERROR` au lieu de `GOOGLE_CALLBACK_UNEXPECTED_ERROR`.
 
 ## Flux d'exécution
 
 ```
-action_route(GoogleCallbackRequest, GoogleCallbackAction)
+run($record)
     ↓
-GoogleCallbackRequest::getRecord() → GoogleCallbackRecord
+before($record)                      ← garde-fou de type (InvalidArgumentException)
     ↓
-GoogleCallbackAction::run(record)
+handle($record)
     ↓
-before(record)
-    └── instanceof GoogleCallbackRecord ? ✓
+instanceof GoogleCallbackRecord ? ── non ──→ renderError(INVALID_RECORD_TYPE)
+    ↓ oui
+googleOAuth->callback($record)
     ↓
-handle(record)
-    ├── instanceof GoogleCallbackRecord ? 
-    │     └── non → INVALID_RECORD_TYPE (500)
-    │
-    ├── try: googleOAuth.callback(record) → GoogleCallbackData
-    │     └── ResponseFactory::json(data, 200)
-    │
-    ├── catch GoogleOAuthException:
-    │     ├── isProviderError() → GOOGLE_PROVIDER_ERROR (400)
-    │     └── sinon → GOOGLE_CALLBACK_ERROR (500)
-    │
-    └── catch Exception → GOOGLE_CALLBACK_ERROR (500)
-    ↓
-after(success, error, record)  // hook libre
-    ↓
-ResponseFactory
+getType() ∈ {VIEW, INERTIA} ? ── non ──→ throw UnexpectedValueException
+    ↓ oui
+return $response
+
+───────── catch ─────────
+
+GoogleOAuthException      → isProviderError() ? GOOGLE_PROVIDER_ERROR : GOOGLE_CALLBACK_ERROR
+UnexpectedValueException  → GOOGLE_CALLBACK_UNEXPECTED_ERROR
+GuzzleException (niveau ≤5) → GOOGLE_CALLBACK_ERROR
+Exception                 → GOOGLE_CALLBACK_UNEXPECTED_ERROR
+
+───────── renderError(ErrorResponseData) ─────────
+
+type = config->getGoogleCallbackResponseType()      // VIEW | INERTIA
+target = config->getGoogleCallbackTarget()           // auth.google-callback
+
+match (type):
+  VIEW    → ResponseFactory::view($target, ['error' => $error])
+  INERTIA → ResponseFactory::inertia($target, ['error' => $error])
+  default → LogicException (jamais atteint, config validée)
 ```
 
 ## Gestion des erreurs
 
-| Situation | ErrorCode | Status HTTP | Message |
-|-----------|-----------|-------------|---------|
-| Record de mauvais type | `INVALID_RECORD_TYPE` | 500 | `Invalid record type` |
-| Google renvoie `error` | `GOOGLE_PROVIDER_ERROR` | 400 | `error_description` de Google |
-| State introuvable | `GOOGLE_CALLBACK_ERROR` | 500 | `Google OAuth state not found` |
-| State expiré | `GOOGLE_CALLBACK_ERROR` | 500 | `Google OAuth state has expired` |
-| Échange de code échoue | `GOOGLE_CALLBACK_ERROR` | 500 | `HTTP request failed: ...` |
-| Vérification ID token échoue | `GOOGLE_CALLBACK_ERROR` | 500 | Message de `GoogleOAuthException` |
+| Situation | Exception source | ErrorCode produit |
+|-----------|------------------|-------------------|
+| Record non conforme | `InvalidArgumentException` (levée dans `before`) | *(exception levée, pas de réponse)* |
+| Record non conforme passé directement à `handle()` | — | `INVALID_RECORD_TYPE` |
+| Google renvoie une erreur | `GoogleOAuthException::providerError` | `GOOGLE_PROVIDER_ERROR` |
+| State mismatch / expiré | `GoogleOAuthException` autre | `GOOGLE_CALLBACK_ERROR` |
+| Service retourne un type ≠ VIEW/INERTIA | `UnexpectedValueException` | `GOOGLE_CALLBACK_UNEXPECTED_ERROR` |
+| Échec HTTP Google (Guzzle) | `GuzzleException` (directe ou encapsulée ≤5 niveaux) | `GOOGLE_CALLBACK_ERROR` |
+| Autre exception | `Exception` | `GOOGLE_CALLBACK_UNEXPECTED_ERROR` |
 
-**Note :** l'Action ne distingue pas les sous-types d'erreur `GoogleOAuthException` internes — toutes tombent sous `GOOGLE_CALLBACK_ERROR` (500). Seul le cas `providerError` remonte à 400.
+Chaque `ErrorCode` est converti via `toResponseData(message: ...)` en `ErrorResponseData`, dont la structure normalisée est :
+
+```json
+{
+    "message": "…",
+    "status": 500,
+    "errorCode": "GOOGLE_CALLBACK_ERROR",
+    "errors": null
+}
+```
+
+Cette structure est injectée **en tant que prop `error`** dans la vue / le composant Inertia.
 
 ## Intégration
 
 ```
-Route::get('/api/google-callback', action_route(...))
-    ↓
-GoogleCallbackRequest  → GoogleCallbackRecord
-    ↓
-GoogleCallbackAction
-    ↓
-GoogleOAuthService::callback()
-    ↓
-GoogleCallbackData
+Route /auth/google/callback
+        ↓
+GoogleCallbackRequest                 ← validation (code, state, error…)
+        ↓
+GoogleCallbackAction                  ← this
+        ↓
+GoogleOAuthService (interface)        ← logique OAuth
+        ↓
+GoogleStateStore / GoogleIdTokenVerifier / ClientService
+        ↓
+ResponseFactory (VIEW | INERTIA)      ← rendu via config callback.target
 ```
 
-L'Action est enregistrée comme singleton dans `GoogleServiceProvider`. Elle reçoit `GoogleOAuthService` par injection. Le contrat avec `action_route()` est respecté : `handle()` retourne toujours un `ResponseFactory`.
+`GoogleCallbackAction` est volontairement mince : **aucune logique métier** n'y réside. Toute la mécanique OAuth est dans `GoogleOAuthInterface`, ce qui permet de substituer une implémentation dans les tests (voir les helpers `runAction()` dans `GoogleCallbackActionTest`).
 
 ## Performance
 
-- **Complexité** : O(1) + coût du `GoogleOAuthService::callback()` (dominé par 2 appels HTTP).
-- **Overhead de l'Action** : négligeable (~0,1 ms).
-- **Aucun cache, aucune I/O directe** dans l'Action elle-même.
+- **O(1)** hors appels réseau et I/O du service.
+- Un seul appel `googleOAuth->callback($record)` par requête.
+- La vérification `in_array($response->getType(), ALLOWED_RESPONSE_TYPES, true)` est en O(1) (2 éléments).
+- La recherche `GuzzleException` dans la chaîne d'exceptions est bornée à 5 niveaux.
 
 ## Compatibilité
 
 | Version PHP | Support |
 |-------------|---------|
-| PHP 8.2+ | ✅ Complet |
-| PHP 8.1 | ✅ Complet |
-| PHP 8.0 | ✅ Complet |
-
-Dépend de `andydefer/laravel-actions` (`AbstractAction`, `ResponseFactory`).
+| PHP 8.1+    | ✅ Complet (`readonly` properties, enums) |
+| PHP 8.2+    | ✅ Complet |
+| PHP 8.5     | ✅ Complet |
 
 ## Exemple complet
-
-### Enregistrement de la route
 
 ```php
 <?php
@@ -252,67 +253,45 @@ declare(strict_types=1);
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleCallbackAction;
 use AndyDefer\AuthenticationKit\Google\Requests\GoogleCallbackRequest;
 use Illuminate\Support\Facades\Route;
-
 use function action_route;
 
-Route::get('/api/google-callback', action_route(
-    GoogleCallbackRequest::class,
-    GoogleCallbackAction::class,
-))->name('api.google-callback');
-```
+// 1. Route
+Route::get(
+    '/auth/google/callback',
+    action_route(GoogleCallbackRequest::class, GoogleCallbackAction::class)
+)->name('google.callback');
 
-### Requête / Réponse
+// 2. Configuration (config/authentication-kit.php)
+// 'google' => [
+//     'callback' => [
+//         'type'   => 'view',
+//         'target' => 'auth.google-callback',
+//     ],
+// ],
 
-```bash
-# Succès
-curl "https://app.test/api/google-callback?code=4/0A...&state=zzRpnjPGjOeJdbjdV5alU-QnzvQU5QrAUWuM8-V0TIM"
+// 3. Vue (resources/views/auth/google-callback.blade.php)
+// <h1>{{ $error ? $error->errorCode : 'OK' }}</h1>
+// @if($error)
+//     <p>{{ $error->message }}</p>
+// @endif
+// @if(isset($data))
+//     <p>Utilisateur : {{ $data->claims->email }}</p>
+// @endif
 
-# HTTP 200
-{
-    "idToken": "eyJhbGciOiJSUzI1NiIs...",
-    "accessToken": "ya29.a0AfH6...",
-    "expiresIn": 3599,
-    "tokenType": "Bearer",
-    "scope": "openid email profile",
-    "claims": { "sub": "108234...", "email": "user@example.com", "emailVerified": true, ... }
-}
-```
-
-```bash
-# Refus utilisateur
-curl "https://app.test/api/google-callback?state=yyy&error=access_denied&error_description=The+user+denied+the+request"
-
-# HTTP 400
-{
-    "message": "The user denied the request",
-    "status": 400,
-    "errorCode": "GOOGLE_PROVIDER_ERROR",
-    "errors": null
-}
-```
-
-### Consommation côté client (frontend)
-
-```js
-// 1. Récupérer l'URL de redirection
-const { url } = await fetch('/api/google-redirect', { method: 'POST' }).then(r => r.json());
-
-// 2. Rediriger l'utilisateur
-window.location.href = url;
-
-// 3. Google redirige vers /api/google-callback?code=...&state=...
-// 4. Le backend retourne :
-//    - soit les tokens et claims (200)
-//    - soit une erreur (400 ou 500)
+// 4. Succès attendu :
+//    view('auth.google-callback', ['data' => GoogleCallbackData])
+//
+// 5. Erreur attendue :
+//    view('auth.google-callback', ['error' => ErrorResponseData])
 ```
 
 ## Voir aussi
 
-- `GoogleOAuthService` — Logique métier exécutée par l'Action
-- `GoogleCallbackRequest` — Transforme la requête HTTP en `GoogleCallbackRecord`
-- `GoogleCallbackRecord` — Record d'entrée
-- `GoogleCallbackData` — Data de sortie (retourné en JSON)
-- `GoogleOAuthException` — Exception unique, avec `isProviderError()`
-- `ErrorCode::GOOGLE_CALLBACK_ERROR` — 500, erreurs internes
-- `ErrorCode::GOOGLE_PROVIDER_ERROR` — 400, erreurs Google
-- `AbstractAction` — Cycle de vie `before → handle → after`
+- [`GoogleOAuthService`](../Services/GoogleOAuthService.md) — implémentation par défaut du service
+- [`GoogleOAuthInterface`](../Contracts/GoogleOAuthInterface.md) — contrat du service
+- [`GoogleCallbackRecord`](../Records/GoogleCallbackRecord.md) — input de l'action
+- [`GoogleCallbackData`](../Datas/GoogleCallbackData.md) — payload de succès
+- [`GoogleCallbackRequest`](../Requests/GoogleCallbackRequest.md) — validation HTTP
+- [`ErrorResponseData`](../../../../nemesis/Datas/ErrorResponseData.md) — structure de la prop `error`
+- [`ErrorCode`](../../Enums/ErrorCode.md) — catalogue des codes d'erreur
+- [`AuthenticationKitConfig`](../../Configs/AuthenticationKitConfig.md) — configuration `callback.type` / `callback.target`

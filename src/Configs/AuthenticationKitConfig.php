@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Configs;
 
+use AndyDefer\Actions\Enums\HttpResponseType;
 use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use InvalidArgumentException;
 
 /**
  * Authentication Kit configuration manager.
@@ -40,6 +42,10 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
     private const DEFAULT_GOOGLE_STATE_LIFETIME = 600;
 
     private const DEFAULT_GOOGLE_PKCE_VERIFIER_LENGTH = 64;
+
+    private const DEFAULT_GOOGLE_CALLBACK_RESPONSE_TYPE = HttpResponseType::VIEW;
+
+    private const DEFAULT_GOOGLE_CALLBACK_TARGET = 'auth.google-callback';
 
     public function __construct(
         private readonly ConfigRepository $config,
@@ -221,5 +227,46 @@ final class AuthenticationKitConfig implements AuthenticationKitConfigInterface
             'authentication-kit.google.pkce_verifier_length',
             self::DEFAULT_GOOGLE_PKCE_VERIFIER_LENGTH
         );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleCallbackResponseType(): HttpResponseType
+    {
+        $raw = $this->config->get(
+            'authentication-kit.google.callback.type',
+            self::DEFAULT_GOOGLE_CALLBACK_RESPONSE_TYPE->value,
+        );
+
+        $type = HttpResponseType::tryFrom((string) $raw);
+
+        if ($type === null || ! in_array($type, [HttpResponseType::VIEW, HttpResponseType::INERTIA], true)) {
+            throw new InvalidArgumentException(sprintf(
+                'Invalid authentication-kit.google.callback.type "%s". Allowed: "view", "inertia".',
+                (string) $raw,
+            ));
+        }
+
+        return $type;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getGoogleCallbackTarget(): string
+    {
+        $target = (string) $this->config->get(
+            'authentication-kit.google.callback.target',
+            self::DEFAULT_GOOGLE_CALLBACK_TARGET,
+        );
+
+        if ($target === '') {
+            throw new InvalidArgumentException(
+                'authentication-kit.google.callback.target must be a non-empty string.',
+            );
+        }
+
+        return $target;
     }
 }

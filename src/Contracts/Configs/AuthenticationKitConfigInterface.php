@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Contracts\Configs;
 
+use AndyDefer\Actions\Enums\HttpResponseType;
+
 /**
  * Interface for authentication kit configuration.
  *
@@ -93,4 +95,18 @@ interface AuthenticationKitConfigInterface
      * Get the Google OAuth PKCE verifier length in bytes.
      */
     public function getGooglePkceVerifierLength(): int;
+
+    /**
+     * Get the presentation type used for a Google callback response.
+     *
+     * Only web-oriented types are accepted: HttpResponseType::VIEW
+     * or HttpResponseType::INERTIA.
+     */
+    public function getGoogleCallbackResponseType(): HttpResponseType;
+
+    /**
+     * Get the view name or Inertia component name rendered on
+     * a Google callback (success or failure).
+     */
+    public function getGoogleCallbackTarget(): string;
 }

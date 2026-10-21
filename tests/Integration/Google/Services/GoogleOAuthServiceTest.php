@@ -4,20 +4,27 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Tests\Integration\Google\Services;
 
+use AndyDefer\Actions\Enums\HttpResponseType;
 use AndyDefer\Actions\Http\ResponseFactory;
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
+use AndyDefer\AuthenticationKit\Google\Datas\GoogleAndroidCallbackData;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleCallbackData;
 use AndyDefer\AuthenticationKit\Google\Datas\GoogleIdTokenClaimsData;
 use AndyDefer\AuthenticationKit\Google\Enums\OperationType;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
+use AndyDefer\AuthenticationKit\Google\Records\GoogleAndroidCallbackRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleRedirectRecord;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleStateRecord;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleIdTokenVerifier;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleOAuthService;
 use AndyDefer\AuthenticationKit\Google\Services\GooglePkceGenerator;
+use AndyDefer\AuthenticationKit\Tests\Integration\Google\Fixtures\Models\TestGoogleUser;
 use AndyDefer\AuthenticationKit\Tests\IntegrationTestCase;
+use AndyDefer\AuthenticationKit\Tests\Mail\Fixtures\Models\TestUserMail;
+use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\PhpClient\Clients\ClientService;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Handler\MockHandler;
@@ -34,6 +41,8 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
     private GoogleOAuthService $service;
 
     private GoogleIdTokenVerifier $idTokenVerifierMock;
+
+    private NemesisInterface $nemesisMock;
 
     protected function setUp(): void
     {
@@ -52,6 +61,11 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
             'state_lifetime' => 600,
             'pkce_verifier_length' => 64,
+
+            'callback' => [
+                'type' => 'view',
+                'target' => 'auth.google-callback',
+            ],
         ]);
 
         $this->app->forgetInstance(AuthenticationKitConfig::class);
@@ -66,6 +80,13 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             }
         );
 
+        $this->app->singleton(
+            AuthenticationKitConfigInterface::class,
+            function ($app): AuthenticationKitConfigInterface {
+                return $app->make(AuthenticationKitConfig::class);
+            }
+        );
+
         $this->mockHandler = new MockHandler;
         $handlerStack = HandlerStack::create($this->mockHandler);
         $guzzle = new GuzzleClient(['handler' => $handlerStack]);
@@ -74,6 +95,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
 
         $this->stateStore = $this->app->make(GoogleStateStoreInterface::class);
         $this->idTokenVerifierMock = Mockery::mock(GoogleIdTokenVerifier::class);
+        $this->nemesisMock = Mockery::mock(NemesisInterface::class);
 
         $this->service = new GoogleOAuthService(
             client: $this->app->make(ClientService::class),
@@ -81,6 +103,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             pkceGenerator: $this->app->make(GooglePkceGenerator::class),
             stateStore: $this->stateStore,
             idTokenVerifier: $this->idTokenVerifierMock,
+            nemesis: $this->nemesisMock,
         );
     }
 
@@ -154,7 +177,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
         $this->assertNotEmpty($pulled->code_verifier);
     }
 
-    // ==================== CALLBACK ====================
+    // ==================== CALLBACK — ERRORS ====================
 
     public function test_callback_throws_when_google_returns_error(): void
     {
@@ -201,6 +224,8 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
         $this->service->callback($record);
     }
 
+    // ==================== CALLBACK — SUCCESS ====================
+
     public function test_callback_exchanges_code_and_returns_tokens(): void
     {
         $this->stateStore->put('valid-state', new GoogleStateRecord(
@@ -240,7 +265,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             ->with('header.payload.signature', 'nonce-xyz')
             ->andReturn($claims);
 
-        $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock) extends GoogleOAuthService
+        $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock, nemesis: $this->nemesisMock) extends GoogleOAuthService
         {
             public ?GoogleCallbackData $captured = null;
 
@@ -308,7 +333,7 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
             ->with('header.payload.signature', 'nonce-xyz')
             ->andReturn($claims);
 
-        $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock) extends GoogleOAuthService
+        $service = new class(client: $this->app->make(ClientService::class), config: $this->app->make(AuthenticationKitConfig::class), pkceGenerator: $this->app->make(GooglePkceGenerator::class), stateStore: $this->stateStore, idTokenVerifier: $this->idTokenVerifierMock, nemesis: $this->nemesisMock) extends GoogleOAuthService
         {
             public function onCallbackSuccess(GoogleCallbackData $data): ResponseFactory
             {
@@ -339,5 +364,232 @@ final class GoogleOAuthServiceTest extends IntegrationTestCase
         $this->expectExceptionMessage('state not found');
 
         $this->service->callback($record);
+    }
+
+    // ==================== ANDROID CALLBACK — VALIDATION ====================
+
+    public function test_android_callback_throws_when_model_does_not_exist(): void
+    {
+        $claims = $this->makeClaims('user@example.com');
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('fake.jwt.token', null)
+            ->andReturn($claims);
+
+        $record = new GoogleAndroidCallbackRecord(
+            model_type: 'App\\Models\\DoesNotExist',
+            id_token: 'fake.jwt.token',
+        );
+
+        $this->expectException(GoogleOAuthException::class);
+        $this->expectExceptionMessage('The specified model_type does not exist');
+
+        $this->service->androidCallback($record);
+    }
+
+    public function test_android_callback_throws_when_model_does_not_implement_mail_authenticatable(): void
+    {
+        $claims = $this->makeClaims('user@example.com');
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('fake.jwt.token', null)
+            ->andReturn($claims);
+
+        $record = new GoogleAndroidCallbackRecord(
+            model_type: \stdClass::class,
+            id_token: 'fake.jwt.token',
+        );
+
+        $this->expectException(GoogleOAuthException::class);
+        $this->expectExceptionMessage('must implement MailAuthenticatable');
+
+        $this->service->androidCallback($record);
+    }
+
+    public function test_android_callback_throws_when_model_does_not_implement_google_authenticatable(): void
+    {
+        $claims = $this->makeClaims('user@example.com');
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('fake.jwt.token', null)
+            ->andReturn($claims);
+
+        $record = new GoogleAndroidCallbackRecord(
+            model_type: TestUserMail::class,
+            id_token: 'fake.jwt.token',
+        );
+
+        $this->expectException(GoogleOAuthException::class);
+        $this->expectExceptionMessage('cannot handle the Google Android flow');
+
+        $this->service->androidCallback($record);
+    }
+
+    public function test_android_callback_throws_when_email_is_not_verified(): void
+    {
+        $claims = GoogleIdTokenClaimsData::from([
+            'sub' => 'sub-123',
+            'email' => 'user@example.com',
+            'emailVerified' => false,
+            'iss' => 'https://accounts.google.com',
+            'aud' => 'test-client-id.apps.googleusercontent.com',
+            'exp' => time() + 3600,
+            'iat' => time(),
+        ]);
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('fake.jwt.token', null)
+            ->andReturn($claims);
+
+        $record = new GoogleAndroidCallbackRecord(
+            model_type: TestGoogleUser::class,
+            id_token: 'fake.jwt.token',
+        );
+
+        $this->expectException(GoogleOAuthException::class);
+        $this->expectExceptionMessage('Google email is not verified');
+
+        $this->service->androidCallback($record);
+    }
+
+    // ==================== ANDROID CALLBACK — SUCCESS ====================
+
+    public function test_android_callback_registers_new_user_and_returns_json(): void
+    {
+        $claims = $this->makeClaims('new-user@example.com', 'New Google User');
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('fake.jwt.token', null)
+            ->andReturn($claims);
+
+        $this->nemesisMock
+            ->shouldReceive('createWithPlainToken')
+            ->once()
+            ->andReturn([new \stdClass, 'plain-nemesis-token']);
+
+        $record = new GoogleAndroidCallbackRecord(
+            model_type: TestGoogleUser::class,
+            id_token: 'fake.jwt.token',
+        );
+
+        $response = $this->service->androidCallback($record);
+
+        $this->assertSame(HttpResponseType::JSON, $response->getType());
+
+        /** @var GoogleAndroidCallbackData $payload */
+        $payload = $response->getContent();
+
+        $this->assertInstanceOf(GoogleAndroidCallbackData::class, $payload);
+        $this->assertTrue($payload->isNewUser);
+        $this->assertSame('Registration successful', $payload->message);
+        $this->assertSame('plain-nemesis-token', $payload->token);
+        $this->assertSame(TestGoogleUser::class, $payload->modelType);
+        $this->assertSame('new-user@example.com', $payload->auth['email'] ?? null);
+        $this->assertSame($claims, $payload->claims);
+
+        $this->assertDatabaseHas('test_google_users', [
+            'email' => 'new-user@example.com',
+        ]);
+    }
+
+    public function test_android_callback_logs_in_existing_user_and_returns_json(): void
+    {
+        TestGoogleUser::create([
+            'name' => 'Existing User',
+            'email' => 'existing@example.com',
+            'password' => bcrypt('whatever'),
+            'email_verified_at' => now(),
+        ]);
+
+        $claims = $this->makeClaims('existing@example.com');
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('fake.jwt.token', null)
+            ->andReturn($claims);
+
+        $this->nemesisMock
+            ->shouldReceive('createWithPlainToken')
+            ->once()
+            ->andReturn([new \stdClass, 'plain-nemesis-token']);
+
+        $record = new GoogleAndroidCallbackRecord(
+            model_type: TestGoogleUser::class,
+            id_token: 'fake.jwt.token',
+        );
+
+        $response = $this->service->androidCallback($record);
+
+        /** @var GoogleAndroidCallbackData $payload */
+        $payload = $response->getContent();
+
+        $this->assertFalse($payload->isNewUser);
+        $this->assertSame('Login successful', $payload->message);
+        $this->assertSame(TestGoogleUser::class, $payload->modelType);
+        $this->assertSame('existing@example.com', $payload->auth['email'] ?? null);
+    }
+
+    public function test_android_callback_delegates_user_creation_to_android_generate(): void
+    {
+        $claims = $this->makeClaims('via-androgenerate@example.com');
+
+        $this->idTokenVerifierMock
+            ->shouldReceive('verify')
+            ->once()
+            ->with('fake.jwt.token', null)
+            ->andReturn($claims);
+
+        $this->nemesisMock
+            ->shouldReceive('createWithPlainToken')
+            ->once()
+            ->andReturn([new \stdClass, 'plain-token']);
+
+        $record = new GoogleAndroidCallbackRecord(
+            model_type: TestGoogleUser::class,
+            id_token: 'fake.jwt.token',
+        );
+
+        $response = $this->service->androidCallback($record);
+
+        $this->assertSame(HttpResponseType::JSON, $response->getType());
+
+        $created = TestGoogleUser::where('email', 'via-androgenerate@example.com')->first();
+
+        $this->assertNotNull($created);
+        $this->assertSame('Via AndroidGenerate', $created->name);
+        $this->assertNotNull($created->email_verified_at);
+        $this->assertSame('google-oauth', $created->provider);
+    }
+
+    // ==================== HELPERS ====================
+
+    private function makeClaims(string $email, ?string $name = null): GoogleIdTokenClaimsData
+    {
+        $payload = [
+            'sub' => 'sub-'.md5($email),
+            'email' => $email,
+            'emailVerified' => true,
+            'iss' => 'https://accounts.google.com',
+            'aud' => 'test-client-id.apps.googleusercontent.com',
+            'exp' => time() + 3600,
+            'iat' => time(),
+        ];
+
+        if ($name !== null) {
+            $payload['name'] = $name;
+        }
+
+        return GoogleIdTokenClaimsData::from($payload);
     }
 }

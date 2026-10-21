@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AndyDefer\AuthenticationKit\Google\Exceptions;
 
+use AndyDefer\AuthenticationKit\Google\Contracts\GoogleAuthenticatable;
 use RuntimeException;
 
 final class GoogleOAuthException extends RuntimeException
@@ -76,6 +77,24 @@ final class GoogleOAuthException extends RuntimeException
     public static function emailNotVerified(): self
     {
         return new self('Google email is not verified');
+    }
+
+    public static function modelNotFound(string $modelClass): self
+    {
+        return new self("The specified model_type does not exist: {$modelClass}");
+    }
+
+    public static function invalidModel(string $modelClass): self
+    {
+        return new self("The specified model_type must implement MailAuthenticatable: {$modelClass}");
+    }
+
+    public static function modelNotGoogleAuthenticatable(string $modelClass): self
+    {
+        return new self(
+            'The specified model_type cannot handle the Google Android flow, it must implement '
+            .GoogleAuthenticatable::class.": {$modelClass}"
+        );
     }
 
     public static function tokenExchangeFailed(string $reason): self

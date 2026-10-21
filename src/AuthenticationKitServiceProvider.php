@@ -22,10 +22,22 @@ final class AuthenticationKitServiceProvider extends ServiceProvider
             'authentication-kit'
         );
 
+        // ✅ AuthenticationKitConfig - bind concrete to container
+        $this->app->singleton(
+            abstract: AuthenticationKitConfig::class,
+            concrete: function ($app): AuthenticationKitConfig {
+                return new AuthenticationKitConfig(
+                    config: $app['config'],
+                );
+            }
+        );
+
         // ✅ AuthenticationKitConfigInterface - bind interface to concrete
         $this->app->singleton(
             abstract: AuthenticationKitConfigInterface::class,
-            concrete: AuthenticationKitConfig::class,
+            concrete: function ($app): AuthenticationKitConfigInterface {
+                return $app->make(AuthenticationKitConfig::class);
+            }
         );
 
         // ✅ JenssegersAgent - bind concrete to container

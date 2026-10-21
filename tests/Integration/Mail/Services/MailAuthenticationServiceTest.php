@@ -18,7 +18,6 @@ use AndyDefer\LaravelOtp\Models\Otp;
 use AndyDefer\LaravelOtp\Services\OtpService;
 use AndyDefer\LaravelOtp\ValueObjects\PurposeVO;
 use AndyDefer\Nemesis\Models\NemesisToken;
-use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -517,21 +516,21 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_restore_cookie_returns_null_when_store_token_in_cookie_disabled(): void
     {
-        // Arrange: cookie storage explicitly disabled and config rebound
         $this->createTestUser();
         $login = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD);
-
         $this->assertNotNull($login);
 
-        $configRepository = app(Repository::class);
-        $configRepository->set('authentication-kit.store_token_in_cookie', false);
+        // 1. Modifier la config
+        config()->set('authentication-kit.store_token_in_cookie', false);
 
+        // 2. Rebind la config dans le container
         $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
 
-        // Discard cookies emitted before we flip the config.
+        // 3. Reconstruire le service (il capture l'ancienne config à la construction)
+        $this->service = MailAuthenticationService::for(TestUserMail::class);
+
         $this->flushQueuedCookies();
 
-        // Act
         $record = new RestoreCookieAuthRecord(
             model_type: TestUserMail::class,
             token: $login->plain_token,
@@ -540,7 +539,6 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
         $restored = $this->service->restoreCookie($record);
 
-        // Assert
         $this->assertNull($restored);
         $this->assertNull($this->getQueuedCookie('nemesis_token'));
     }
@@ -1273,20 +1271,17 @@ final class MailAuthenticationServiceTest extends IntegrationTestCase
 
     public function test_login_does_not_queue_cookie_when_store_token_in_cookie_is_disabled(): void
     {
-        // Arrange: cookie storage explicitly disabled and config rebound
         $this->createTestUser();
 
-        $configRepository = app(Repository::class);
-        $configRepository->set('authentication-kit.store_token_in_cookie', false);
-
+        config()->set('authentication-kit.store_token_in_cookie', false);
         $this->app->forgetInstance(AuthenticationKitConfigInterface::class);
+
+        $this->service = MailAuthenticationService::for(TestUserMail::class);
 
         $this->flushQueuedCookies();
 
-        // Act
         $result = $this->service->login(self::TEST_EMAIL, self::TEST_PASSWORD, rememberMe: true);
 
-        // Assert
         $this->assertNotNull($result);
         $this->assertNull($this->getQueuedCookie('nemesis_token'));
     }

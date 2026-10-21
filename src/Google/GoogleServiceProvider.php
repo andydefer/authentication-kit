@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Google;
 
 use AndyDefer\AuthenticationKit\Configs\AuthenticationKitConfig;
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
+use AndyDefer\AuthenticationKit\Google\Actions\GoogleAndroidCallbackAction;
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleCallbackAction;
 use AndyDefer\AuthenticationKit\Google\Actions\GoogleRedirectAction;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleStateStoreInterface;
@@ -12,6 +14,7 @@ use AndyDefer\AuthenticationKit\Google\Services\GoogleIdTokenVerifier;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleOAuthService;
 use AndyDefer\AuthenticationKit\Google\Services\GooglePkceGenerator;
 use AndyDefer\AuthenticationKit\Google\Services\GoogleStateStore;
+use AndyDefer\Nemesis\Contracts\Services\NemesisInterface;
 use AndyDefer\PhpClient\Clients\ClientService;
 use Illuminate\Support\ServiceProvider;
 
@@ -56,6 +59,7 @@ final class GoogleServiceProvider extends ServiceProvider
                     pkceGenerator: $app->make(GooglePkceGenerator::class),
                     stateStore: $app->make(GoogleStateStoreInterface::class),
                     idTokenVerifier: $app->make(GoogleIdTokenVerifier::class),
+                    nemesis: $app->make(NemesisInterface::class),
                 );
             }
         );
@@ -75,6 +79,17 @@ final class GoogleServiceProvider extends ServiceProvider
             abstract: GoogleCallbackAction::class,
             concrete: function ($app): GoogleCallbackAction {
                 return new GoogleCallbackAction(
+                    googleOAuth: $app->make(GoogleOAuthService::class),
+                    config: $app->make(AuthenticationKitConfigInterface::class),
+                );
+            }
+        );
+
+        // GoogleAndroidCallbackAction
+        $this->app->singleton(
+            abstract: GoogleAndroidCallbackAction::class,
+            concrete: function ($app): GoogleAndroidCallbackAction {
+                return new GoogleAndroidCallbackAction(
                     googleOAuth: $app->make(GoogleOAuthService::class),
                 );
             }

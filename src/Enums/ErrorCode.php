@@ -62,6 +62,9 @@ enum ErrorCode: string implements ErrorDescribable
     case GOOGLE_STATE_MISMATCH = 'GOOGLE_STATE_MISMATCH';
     case GOOGLE_STATE_EXPIRED = 'GOOGLE_STATE_EXPIRED';
     case GOOGLE_PROVIDER_ERROR = 'GOOGLE_PROVIDER_ERROR';
+    case GOOGLE_MODEL_NOT_FOUND = 'GOOGLE_MODEL_NOT_FOUND';
+    case GOOGLE_INVALID_MODEL = 'GOOGLE_INVALID_MODEL';
+    case GOOGLE_MODEL_NOT_GOOGLE_AUTHENTICATABLE = 'GOOGLE_MODEL_NOT_GOOGLE_AUTHENTICATABLE';
 
     /**
      * {@inheritDoc}
@@ -101,7 +104,10 @@ enum ErrorCode: string implements ErrorDescribable
             self::MODEL_TYPE_REQUIRED,
             self::GOOGLE_STATE_MISMATCH,
             self::GOOGLE_STATE_EXPIRED,
-            self::GOOGLE_PROVIDER_ERROR => HttpStatusCode::BAD_REQUEST,
+            self::GOOGLE_PROVIDER_ERROR,
+            self::GOOGLE_MODEL_NOT_FOUND,
+            self::GOOGLE_INVALID_MODEL,
+            self::GOOGLE_MODEL_NOT_GOOGLE_AUTHENTICATABLE => HttpStatusCode::BAD_REQUEST,
 
             self::INVALID_CREDENTIALS,
             self::INVALID_TOKEN,
@@ -168,6 +174,9 @@ enum ErrorCode: string implements ErrorDescribable
             self::GOOGLE_STATE_MISMATCH => 'Google OAuth state mismatch',
             self::GOOGLE_STATE_EXPIRED => 'Google OAuth state has expired',
             self::GOOGLE_PROVIDER_ERROR => 'Google returned an error',
+            self::GOOGLE_MODEL_NOT_FOUND => 'The specified model_type does not exist',
+            self::GOOGLE_INVALID_MODEL => 'The specified model_type must implement MailAuthenticatable',
+            self::GOOGLE_MODEL_NOT_GOOGLE_AUTHENTICATABLE => 'The specified model_type must implement GoogleAuthenticatable to handle the Android flow',
         };
     }
 

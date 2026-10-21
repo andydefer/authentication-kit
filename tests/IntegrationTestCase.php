@@ -201,22 +201,18 @@ abstract class IntegrationTestCase extends Orchestra
 
     protected function runMigrations(): void
     {
-        // ✅ Nemesis migrations
-        $nemesisMigrationsPath = __DIR__.'/../vendor/andydefer/laravel-nemesis/database/migrations';
-        if (is_dir($nemesisMigrationsPath)) {
-            $this->loadMigrationsFrom($nemesisMigrationsPath);
-        }
+        $paths = [
+            __DIR__.'/../vendor/andydefer/laravel-nemesis/database/migrations',
+            __DIR__.'/../vendor/andydefer/laravel-notification/database/migrations',
+            __DIR__.'/Mail/Fixtures/database/migrations',
+            __DIR__.'/database/migrations',
+            __DIR__.'/Integration/Google/Fixtures/database/migrations',
+        ];
 
-        // ✅ Notification migrations
-        $notificationMigrationsPath = __DIR__.'/../vendor/andydefer/laravel-notification/database/migrations';
-        if (is_dir($notificationMigrationsPath)) {
-            $this->loadMigrationsFrom($notificationMigrationsPath);
-        }
-
-        // ✅ Test migrations
-        $testMigrationsPath = __DIR__.'/Mail/Fixtures/database/migrations';
-        if (is_dir($testMigrationsPath)) {
-            $this->loadMigrationsFrom($testMigrationsPath);
+        foreach ($paths as $path) {
+            if (is_dir($path)) {
+                $this->loadMigrationsFrom($path);
+            }
         }
 
         $this->artisan('migrate', [

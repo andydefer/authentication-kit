@@ -5,28 +5,45 @@ declare(strict_types=1);
 namespace AndyDefer\AuthenticationKit\Google\Actions;
 
 use AndyDefer\Actions\Actions\AbstractAction;
+use AndyDefer\Actions\Enums\HttpResponseType;
 use AndyDefer\Actions\Http\ResponseFactory;
+use AndyDefer\AuthenticationKit\Contracts\Configs\AuthenticationKitConfigInterface;
 use AndyDefer\AuthenticationKit\Enums\ErrorCode;
 use AndyDefer\AuthenticationKit\Google\Contracts\GoogleOAuthInterface;
 use AndyDefer\AuthenticationKit\Google\Exceptions\GoogleOAuthException;
 use AndyDefer\AuthenticationKit\Google\Records\GoogleCallbackRecord;
 use AndyDefer\DomainStructures\Abstracts\AbstractRecord;
+use AndyDefer\Nemesis\Datas\ErrorResponseData;
 use Exception;
 use GuzzleHttp\Exception\GuzzleException;
 use Throwable;
+use UnexpectedValueException;
 
 /**
  * Handles Google's OAuth callback: delegates to the Google OAuth service
  * and returns the HTTP response produced by the service.
  *
- * The final presentation (JSON, redirect, session issuance, ...) is decided
- * by `GoogleOAuthInterface::onCallbackSuccess()` on the resolved service,
- * not by this Action. Override the service to change the behaviour.
+ * The callback is a browser round-trip: every response — success or
+ * failure — is rendered through the configured Web presentation
+ * (`authentication-kit.google.callback.type` = "view" | "inertia").
+ * Errors are never returned as JSON: the full ErrorResponseData is
+ * passed to the view / Inertia component via the `error` prop.
  */
 final class GoogleCallbackAction extends AbstractAction
 {
+    /**
+     * Response types allowed for a Google callback.
+     */
+    private const ALLOWED_RESPONSE_TYPES = [
+        HttpResponseType::VIEW,
+        HttpResponseType::INERTIA,
+    ];
+
+    private const PROP_ERROR = 'error';
+
     public function __construct(
         private readonly GoogleOAuthInterface $googleOAuth,
+        private readonly AuthenticationKitConfigInterface $config,
     ) {}
 
     /**
@@ -45,36 +62,67 @@ final class GoogleCallbackAction extends AbstractAction
     protected function handle(AbstractRecord $record): ResponseFactory
     {
         if (! $record instanceof GoogleCallbackRecord) {
-            return ErrorCode::INVALID_RECORD_TYPE->toJsonResponseFactory();
+            return $this->renderError(
+                ErrorCode::INVALID_RECORD_TYPE->toResponseData(),
+            );
         }
 
         try {
-            return $this->googleOAuth->callback($record);
-        } catch (GoogleOAuthException $e) {
-            if ($e->isProviderError()) {
-                return ErrorCode::GOOGLE_PROVIDER_ERROR->toJsonResponseFactory(
-                    message: $e->getMessage(),
-                );
+            $response = $this->googleOAuth->callback($record);
+
+            if (! in_array($response->getType(), self::ALLOWED_RESPONSE_TYPES, true)) {
+                throw new UnexpectedValueException(sprintf(
+                    'GoogleOAuthInterface::callback() must return a Web response (VIEW or INERTIA), got "%s".',
+                    $response->getType()->value,
+                ));
             }
 
-            return ErrorCode::GOOGLE_CALLBACK_ERROR->toJsonResponseFactory(
-                message: $e->getMessage(),
+            return $response;
+        } catch (GoogleOAuthException $e) {
+            $code = $e->isProviderError()
+                ? ErrorCode::GOOGLE_PROVIDER_ERROR
+                : ErrorCode::GOOGLE_CALLBACK_ERROR;
+
+            return $this->renderError(
+                $code->toResponseData(message: $e->getMessage()),
+            );
+        } catch (UnexpectedValueException $e) {
+            return $this->renderError(
+                ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR->toResponseData(
+                    message: $e->getMessage(),
+                ),
             );
         } catch (Exception $e) {
-            // A Google HTTP failure (400/401/…) is wrapped by the HTTP client
-            // into a generic RuntimeException whose `previous` is the
-            // underlying Guzzle exception. That is still an expected OAuth
-            // callback failure, not an unexpected application error.
-            if ($this->isHttpClientFailure($e)) {
-                return ErrorCode::GOOGLE_CALLBACK_ERROR->toJsonResponseFactory(
-                    message: $e->getMessage(),
-                );
-            }
+            $code = $this->isHttpClientFailure($e)
+                ? ErrorCode::GOOGLE_CALLBACK_ERROR
+                : ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR;
 
-            return ErrorCode::GOOGLE_CALLBACK_UNEXPECTED_ERROR->toJsonResponseFactory(
-                message: $e->getMessage(),
+            return $this->renderError(
+                $code->toResponseData(message: $e->getMessage()),
             );
         }
+    }
+
+    /**
+     * Renders a Web error response through the configured callback
+     * presentation (view or inertia), injecting the normalized
+     * ErrorResponseData as the `error` prop.
+     */
+    private function renderError(ErrorResponseData $error): ResponseFactory
+    {
+        $props = [self::PROP_ERROR => $error];
+
+        $type = $this->config->getGoogleCallbackResponseType();
+        $target = $this->config->getGoogleCallbackTarget();
+
+        return match ($type) {
+            HttpResponseType::VIEW => ResponseFactory::view($target, $props),
+            HttpResponseType::INERTIA => ResponseFactory::inertia($target, $props),
+            default => throw new \LogicException(sprintf(
+                'Unsupported Google callback response type: %s.',
+                $type->value,
+            )),
+        };
     }
 
     /**
