@@ -31,7 +31,7 @@ final class LogRepository implements LogRepositoryInterface
      * {@inheritDoc}
      */
     public function logRegistrationSuccess(
-        int $authId,
+        int|string $authId,
         string $modelClass,
         bool $withToken,
     ): void {
@@ -75,7 +75,7 @@ final class LogRepository implements LogRepositoryInterface
      * {@inheritDoc}
      */
     public function loginSuccess(
-        int $authId,
+        int|string $authId,
         string $modelClass,
         string $email,
     ): void {
@@ -121,7 +121,7 @@ final class LogRepository implements LogRepositoryInterface
      * {@inheritDoc}
      */
     public function logoutSuccess(
-        int $authId,
+        int|string $authId,
         string $modelClass,
         string $email,
     ): void {
@@ -281,7 +281,7 @@ final class LogRepository implements LogRepositoryInterface
      * {@inheritDoc}
      */
     public function logEmailUpdateSuccess(
-        int $authId,
+        int|string $authId,
         string $modelClass,
         string $newEmail,
     ): void {
@@ -303,7 +303,7 @@ final class LogRepository implements LogRepositoryInterface
      * {@inheritDoc}
      */
     public function logEmailUpdateFailure(
-        int $authId,
+        int|string $authId,
         string $modelClass,
         string $error,
         ErrorType $errorType,
@@ -327,7 +327,7 @@ final class LogRepository implements LogRepositoryInterface
      * {@inheritDoc}
      */
     public function logTwoFactorSent(
-        int $authId,
+        int|string $authId,
         string $modelClass,
         string $purpose,
         bool $success,
@@ -353,7 +353,7 @@ final class LogRepository implements LogRepositoryInterface
      * {@inheritDoc}
      */
     public function logTwoFactorVerified(
-        int $authId,
+        int|string $authId,
         string $modelClass,
         string $purpose,
         bool $success,
