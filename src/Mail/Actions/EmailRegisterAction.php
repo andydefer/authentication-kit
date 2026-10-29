@@ -29,7 +29,7 @@ final class EmailRegisterAction extends AbstractAction
 {
     private mixed $modelClass;
 
-    private ?int $authId = null;
+    private int|string|null $authId = null;
 
     private bool $withToken = false;
 

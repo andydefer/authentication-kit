@@ -25,7 +25,7 @@ final class EmailLogoutAction extends AbstractAction
 {
     private mixed $modelClass;
 
-    private ?int $authId = null;
+    private int|string|null $authId = null;
 
     private ?string $email = null;
 

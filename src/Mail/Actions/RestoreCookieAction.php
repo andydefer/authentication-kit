@@ -31,7 +31,7 @@ final class RestoreCookieAction extends AbstractAction
 {
     private mixed $modelClass;
 
-    private ?int $authId = null;
+    private int|string|null $authId = null;
 
     private bool $success = false;
 

@@ -32,7 +32,7 @@ final class EmailLoginAction extends AbstractAction
 
     private ?string $email = null;
 
-    private ?int $authId = null;
+    private int|string|null $authId = null;
 
     private bool $success = false;
 
